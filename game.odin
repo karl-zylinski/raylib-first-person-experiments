@@ -71,7 +71,7 @@ draw :: proc() {
 
 	//rl.rlSetUniformMatrix(g_mem.shader.locs[rl.ShaderLocationIndex.MATRIX_NORMAL], linalg.transpose(linalg.inverse(mat_model)))
 
-	rl.DrawCube({0, 0, -3}, 1, 1, 1, rl.WHITE)
+//	rl.DrawCube({0, 0, -3}, 1, 1, 1, rl.WHITE)
 	rl.DrawModel(g_mem.teapot, {0, 0, -5}, 0.3, rl.WHITE)
 
 	rl.EndShaderMode()
@@ -91,7 +91,7 @@ game_update :: proc() -> bool {
 @(export)
 game_init_window :: proc() {
 	rl.SetConfigFlags({.WINDOW_RESIZABLE})
-	rl.InitWindow(1280, 720, "Odin + Raylib + Hot Reload template!")
+	rl.InitWindow(1280, 720, "Teapot Tycoon")
 	rl.SetWindowPosition(200, 200)
 	rl.SetTargetFPS(500)
 }
