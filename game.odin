@@ -25,38 +25,48 @@ GameMemory :: struct {
 	pitch: f32,
 	shader: rl.Shader,
 	teapot: rl.Model,
+	box: rl.Model,
+	mouse_captured: bool,
 }
 
 g_mem: ^GameMemory
 
 update :: proc() {
-	movement: Vec3
+	if rl.IsWindowFocused() {
+		if rl.IsKeyPressed(.X) {
+			if g_mem.mouse_captured {
+				rl.EnableCursor()
+				g_mem.mouse_captured = false
+			} else {
+				rl.DisableCursor()
+				g_mem.mouse_captured = true
+			}
+		}
 
-	if rl.IsKeyDown(.W) {
-		movement.z -= 1
+		movement: Vec3
+
+		if rl.IsKeyDown(.W) {
+			movement.z -= 1
+		}
+
+		if rl.IsKeyDown(.S) {
+			movement.z += 1
+		}
+
+		if rl.IsKeyDown(.A) {
+			movement.x -= 1
+		}
+
+		if rl.IsKeyDown(.D) {
+			movement.x += 1
+		}
+
+		g_mem.yaw -= rl.GetMouseDelta().x * rl.GetFrameTime() * 0.2
+		g_mem.pitch -= rl.GetMouseDelta().y * rl.GetFrameTime() * 0.2
+		g_mem.pitch = clamp(g_mem.pitch, -0.24, 0.24)
+		r := camera_rot_matrix()
+		g_mem.player_pos += linalg.mul(r, vec4_point(movement)).xyz * rl.GetFrameTime()
 	}
-
-	if rl.IsKeyDown(.S) {
-		movement.z += 1
-	}
-
-	if rl.IsKeyDown(.A) {
-		movement.x -= 1
-	}
-
-	if rl.IsKeyDown(.D) {
-		movement.x += 1
-	}
-
-
-	g_mem.yaw -= rl.GetMouseDelta().x * rl.GetFrameTime() * 0.2
-	g_mem.pitch -= rl.GetMouseDelta().y * rl.GetFrameTime() * 0.2
-
-	g_mem.pitch = clamp(g_mem.pitch, -0.24, 0.24)
-
-	r := camera_rot_matrix()
-
-	g_mem.player_pos += linalg.mul(r, vec4_point(movement)).xyz * rl.GetFrameTime()
 }
 
 draw :: proc() {
@@ -66,13 +76,11 @@ draw :: proc() {
 	rl.BeginMode3D(game_camera())
 	rl.BeginShaderMode(g_mem.shader)
 
+    rl.SetShaderValue(g_mem.shader, rl.ShaderLocationIndex(g_mem.shader.locs[rl.ShaderLocationIndex.VECTOR_VIEW]), raw_data(&g_mem.player_pos), .VEC3)
 
-	//mat_model :#row_major matrix[4, 4]f32  = (#row_major matrix[4, 4]f32)(linalg.matrix4_translate(Vec3{0, 0, -5}))
-
-	//rl.rlSetUniformMatrix(g_mem.shader.locs[rl.ShaderLocationIndex.MATRIX_NORMAL], linalg.transpose(linalg.inverse(mat_model)))
-
-//	rl.DrawCube({0, 0, -3}, 1, 1, 1, rl.WHITE)
 	rl.DrawModel(g_mem.teapot, {0, 0, -5}, 0.3, rl.WHITE)
+	rl.DrawModelEx(g_mem.box, {0, -1, 0}, 0, 0, {5, 1, 20}, rl.WHITE)
+	rl.DrawModelEx(g_mem.box, {0, 4, 0}, 0, 0, {5, 1, 20}, rl.WHITE)
 
 	rl.EndShaderMode()
 
@@ -122,15 +130,39 @@ game_init :: proc() {
 		pitch = -0.1,
 		shader = rl.LoadShader("vertex_shader.vs", "fragment_shader.fs"),
 		teapot = rl.LoadModel("teapot.obj"),
+		box = rl.LoadModel("box.obj"),
 	}
+
+
+	ambient := Vec4{ 0.1, 0.1, 0.1, 1.0}
+    rl.SetShaderValue(g_mem.shader, rl.GetShaderLocation(g_mem.shader, "ambient"), raw_data(&ambient), .VEC4)
 
 	for midx in 0..<g_mem.teapot.materialCount {
 		g_mem.teapot.materials[midx].shader = g_mem.shader
 	}
 
-	game_hot_reloaded(g_mem)
+	for midx in 0..<g_mem.box.materialCount {
+		g_mem.box.materials[midx].shader = g_mem.shader
+	}
+	
+	g_mem.shader.locs[rl.ShaderLocationIndex.VECTOR_VIEW] = i32(rl.GetShaderLocation(g_mem.shader, "viewPos"))
 
-	rl.DisableCursor()
+    set_light(0, true, {0, 2, 5}, { 0.8, 0.5, 0.5, 1 })
+
+    set_light(1, true, {0, 2, -5}, { 0.4, 0.8, 0.5, 1 })
+    set_light(3, true, {0, 2, -7}, { 0.4, 0.2, 0.9, 1 })
+
+	game_hot_reloaded(g_mem)
+}
+
+set_light :: proc(n: int, enabled: bool, pos: Vec3, color: Vec4) {
+	enabled := int(enabled)
+	pos := pos
+	color := color
+	rl.SetShaderValue(g_mem.shader, rl.GetShaderLocation(g_mem.shader, fmt.ctprintf("lights[%v].enabled", n)), &enabled, .INT)
+	rl.SetShaderValue(g_mem.shader, rl.GetShaderLocation(g_mem.shader, fmt.ctprintf("lights[%v].type", n)), &enabled, .INT)
+	rl.SetShaderValue(g_mem.shader, rl.GetShaderLocation(g_mem.shader, fmt.ctprintf("lights[%v].position", n)), raw_data(&pos), .VEC3)
+    rl.SetShaderValue(g_mem.shader, rl.GetShaderLocation(g_mem.shader, fmt.ctprintf("lights[%v].color", n)), raw_data(&color), .VEC4)
 }
 
 @(export)
