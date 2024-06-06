@@ -7,6 +7,12 @@
 		{
 			"path": "C:\\repos\\raylib\\src",
 		},
+		{
+			"path": "C:\\Odin\\core",
+		},
+		{
+			"path": "C:\\Odin\\vendor\\raylib"
+		},
 	],
 	"build_systems":
 	[
