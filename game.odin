@@ -29,7 +29,8 @@ GameMemory :: struct {
 	player_vel: Vec3,
 	yaw: f32,
 	pitch: f32,
-	shader: rl.Shader,
+	default_shader: rl.Shader,
+	skybox_shader: rl.Shader,
 	teapot: rl.Model,
 	box: rl.Model,
 	boxes: [dynamic]Box,
@@ -140,14 +141,84 @@ update :: proc() {
 	}
 }
 
+
+draw_skybox :: proc()
+{
+	rl.BeginShaderMode(g_mem.skybox_shader)
+    s :: 1000
+    c := rl.RED
+
+    rl.rlPushMatrix()
+        rl.rlBegin(rl.RL_TRIANGLES)
+            rl.rlColor4ub(c.r, c.g, c.b, c.a)
+
+            // Front face
+            rl.rlNormal3f(0, 0, -1)
+            rl.rlVertex3f(+s/2, -s/2, +s/2)
+            rl.rlVertex3f(-s/2, -s/2, +s/2)
+            rl.rlVertex3f(-s/2, +s/2, +s/2)
+            rl.rlVertex3f(-s/2, +s/2, +s/2)
+            rl.rlVertex3f(+s/2, +s/2, +s/2)
+            rl.rlVertex3f(+s/2, -s/2, +s/2)
+
+            // Back
+            rl.rlNormal3f(0, 0, 1)
+            rl.rlVertex3f(-s/2, -s/2, -s/2)
+            rl.rlVertex3f(+s/2, -s/2, -s/2)
+            rl.rlVertex3f(-s/2, +s/2, -s/2)
+            rl.rlVertex3f(+s/2, +s/2, -s/2)
+            rl.rlVertex3f(-s/2, +s/2, -s/2)
+            rl.rlVertex3f(+s/2, -s/2, -s/2)
+
+            // Left
+            rl.rlNormal3f(-1, 0, 0)
+            rl.rlVertex3f(+s/2, -s/2, -s/2)
+            rl.rlVertex3f(+s/2, -s/2, +s/2)
+            rl.rlVertex3f(+s/2, +s/2, -s/2)
+            rl.rlVertex3f(+s/2, +s/2, +s/2)
+            rl.rlVertex3f(+s/2, +s/2, -s/2)
+            rl.rlVertex3f(+s/2, -s/2, +s/2)
+
+            // Right
+            rl.rlNormal3f(1, 0, 0)
+            rl.rlVertex3f(-s/2, -s/2, +s/2)
+            rl.rlVertex3f(-s/2, -s/2, -s/2)
+            rl.rlVertex3f(-s/2, +s/2, -s/2)
+            rl.rlVertex3f(-s/2, +s/2, -s/2)
+            rl.rlVertex3f(-s/2, +s/2, +s/2)
+            rl.rlVertex3f(-s/2, -s/2, +s/2)
+
+            // Bottom
+            rl.rlNormal3f(0, 1, 0)
+            rl.rlVertex3f(-s/2, -s/2, -s/2)
+            rl.rlVertex3f(-s/2, -s/2, +s/2)
+            rl.rlVertex3f(+s/2, -s/2, -s/2)
+            rl.rlVertex3f(+s/2, -s/2, +s/2)
+            rl.rlVertex3f(+s/2, -s/2, -s/2)
+            rl.rlVertex3f(-s/2, -s/2, +s/2)
+
+            // Top
+            rl.rlNormal3f(0, -1, 0)
+            rl.rlVertex3f(-s/2, +s/2, +s/2)
+            rl.rlVertex3f(-s/2, +s/2, -s/2)
+            rl.rlVertex3f(+s/2, +s/2, -s/2)
+            rl.rlVertex3f(+s/2, +s/2, -s/2)
+            rl.rlVertex3f(+s/2, +s/2, +s/2)
+            rl.rlVertex3f(-s/2, +s/2, +s/2)
+        rl.rlEnd()
+    rl.rlPopMatrix()
+    rl.EndShaderMode()
+}
+
 draw :: proc() {
 	rl.BeginDrawing()
 	rl.ClearBackground(rl.BLACK)
-	
-	rl.BeginMode3D(game_camera())
-	rl.BeginShaderMode(g_mem.shader)
 
-	rl.SetShaderValue(g_mem.shader, rl.ShaderLocationIndex(g_mem.shader.locs[rl.ShaderLocationIndex.VECTOR_VIEW]), raw_data(&g_mem.player_pos), .VEC3)
+	rl.BeginMode3D(game_camera())
+	draw_skybox()
+	rl.BeginShaderMode(g_mem.default_shader)
+
+	rl.SetShaderValue(g_mem.default_shader, rl.ShaderLocationIndex(g_mem.default_shader.locs[rl.ShaderLocationIndex.VECTOR_VIEW]), raw_data(&g_mem.player_pos), .VEC3)
 
 	rl.DrawModel(g_mem.teapot, {0, 0, -5}, 0.3, rl.WHITE)
 
@@ -237,24 +308,24 @@ game_init :: proc() {
 		player_pos = {2, 2, -3},
 		yaw = 0.1,
 		pitch = -0.1,
-		shader = rl.LoadShader("vertex_shader.vs", "fragment_shader.fs"),
+		default_shader = rl.LoadShader("default_lighting.vs", "default_lighting.fs"),
+		skybox_shader = rl.LoadShader("skybox.vs", "skybox.fs"),
 		teapot = rl.LoadModel("teapot.obj"),
 		box = rl.LoadModel("box.obj"),
 	}
 
-
 	ambient := Vec4{ 0.1, 0.1, 0.1, 1.0}
-	rl.SetShaderValue(g_mem.shader, rl.GetShaderLocation(g_mem.shader, "ambient"), raw_data(&ambient), .VEC4)
+	rl.SetShaderValue(g_mem.default_shader, rl.GetShaderLocation(g_mem.default_shader, "ambient"), raw_data(&ambient), .VEC4)
 
 	for midx in 0..<g_mem.teapot.materialCount {
-		g_mem.teapot.materials[midx].shader = g_mem.shader
+		g_mem.teapot.materials[midx].shader = g_mem.default_shader
 	}
 
 	for midx in 0..<g_mem.box.materialCount {
-		g_mem.box.materials[midx].shader = g_mem.shader
+		g_mem.box.materials[midx].shader = g_mem.default_shader
 	}
 	
-	g_mem.shader.locs[rl.ShaderLocationIndex.VECTOR_VIEW] = i32(rl.GetShaderLocation(g_mem.shader, "viewPos"))
+	g_mem.default_shader.locs[rl.ShaderLocationIndex.VECTOR_VIEW] = i32(rl.GetShaderLocation(g_mem.default_shader, "viewPos"))
 
 	set_light(0, true, {0, 2, 5}, { 0.8, 0.5, 0.5, 1 })
 	set_light(1, true, {0, 2, -5}, { 0.4, 0.8, 0.5, 1 })
@@ -265,10 +336,10 @@ game_init :: proc() {
 		size = {5, 1, 20},
 	})
 
-	append(&g_mem.boxes, Box{
+	/*append(&g_mem.boxes, Box{
 		pos = {0, 4, 0},
 		size = {5, 1, 20},
-	})
+	})*/
 
 	append(&g_mem.boxes, Box{
 		pos = {0, -1, -12},
@@ -287,10 +358,10 @@ set_light :: proc(n: int, enabled: bool, pos: Vec3, color: Vec4) {
 	enabled := int(enabled)
 	pos := pos
 	color := color
-	rl.SetShaderValue(g_mem.shader, rl.GetShaderLocation(g_mem.shader, fmt.ctprintf("lights[%v].enabled", n)), &enabled, .INT)
-	rl.SetShaderValue(g_mem.shader, rl.GetShaderLocation(g_mem.shader, fmt.ctprintf("lights[%v].type", n)), &enabled, .INT)
-	rl.SetShaderValue(g_mem.shader, rl.GetShaderLocation(g_mem.shader, fmt.ctprintf("lights[%v].position", n)), raw_data(&pos), .VEC3)
-	rl.SetShaderValue(g_mem.shader, rl.GetShaderLocation(g_mem.shader, fmt.ctprintf("lights[%v].color", n)), raw_data(&color), .VEC4)
+	rl.SetShaderValue(g_mem.default_shader, rl.GetShaderLocation(g_mem.default_shader, fmt.ctprintf("lights[%v].enabled", n)), &enabled, .INT)
+	rl.SetShaderValue(g_mem.default_shader, rl.GetShaderLocation(g_mem.default_shader, fmt.ctprintf("lights[%v].type", n)), &enabled, .INT)
+	rl.SetShaderValue(g_mem.default_shader, rl.GetShaderLocation(g_mem.default_shader, fmt.ctprintf("lights[%v].position", n)), raw_data(&pos), .VEC3)
+	rl.SetShaderValue(g_mem.default_shader, rl.GetShaderLocation(g_mem.default_shader, fmt.ctprintf("lights[%v].color", n)), raw_data(&color), .VEC4)
 }
 
 @(export)
