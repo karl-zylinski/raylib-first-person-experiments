@@ -24,9 +24,42 @@ Box :: struct {
 	pos: Vec3,
 }
 
+Climb_Point :: struct {
+	pos: Vec3,
+	wanted_facing: Vec3,
+}
+
+Player_State_Default :: struct {}
+
+Player_State_Climb_Start :: struct {
+	point: Climb_Point,
+	start: Vec3,
+	start_pitch: f32,
+	start_yaw: f32,
+}
+
+Player_State_Climb_Down :: struct {
+	start: Vec3,
+	end: Vec3,
+}
+
+Player_State_Climb_End :: struct {
+	start_yaw: f32,
+}
+
+Player_State :: union #no_nil {
+	Player_State_Default,
+	Player_State_Climb_Start,
+	Player_State_Climb_Down,
+	Player_State_Climb_End,
+}
+
 GameMemory :: struct {	
 	player_pos: Vec3,
 	player_vel: Vec3,
+	player_state: Player_State,
+	state_start: f64,
+	time: f64,
 	yaw: f32,
 	pitch: f32,
 	default_shader: rl.Shader,
@@ -36,6 +69,7 @@ GameMemory :: struct {
 	boxes: [dynamic]Box,
 	mouse_captured: bool,
 	player_grounded: bool,
+	climb_points: [dynamic]Climb_Point,
 }
 
 g_mem: ^GameMemory
@@ -50,40 +84,82 @@ player_bounding_box :: proc() -> rl.BoundingBox {
 }
 
 update :: proc() {
-	if rl.IsWindowFocused() {
-		if rl.IsKeyPressed(.X) {
-			if g_mem.mouse_captured {
-				rl.EnableCursor()
-				g_mem.mouse_captured = false
-			} else {
-				rl.DisableCursor()
-				g_mem.mouse_captured = true
+	g_mem.time += f64(rl.GetFrameTime())
+
+	switch &s in g_mem.player_state {
+		case Player_State_Default:
+			if rl.IsWindowFocused() {
+				if rl.IsKeyPressed(.X) {
+					if g_mem.mouse_captured {
+						rl.EnableCursor()
+						g_mem.mouse_captured = false
+					} else {
+						rl.DisableCursor()
+						g_mem.mouse_captured = true
+					}
+				}
+
+				movement: Vec3
+
+				if rl.IsKeyDown(.W) {
+					movement.z -= 1
+				}
+
+				if rl.IsKeyDown(.S) {
+					movement.z += 1
+				}
+
+				if rl.IsKeyDown(.A) {
+					movement.x -= 1
+				}
+
+				if rl.IsKeyDown(.D) {
+					movement.x += 1
+				}
+
+				g_mem.yaw -= rl.GetMouseDelta().x * rl.GetFrameTime() * 0.2
+				g_mem.pitch -= rl.GetMouseDelta().y * rl.GetFrameTime() * 0.2
+				g_mem.pitch = clamp(g_mem.pitch, -0.24, 0.24)
+				r := linalg.matrix4_rotate(g_mem.yaw * math.TAU, Vec3{0, 1, 0})
+				g_mem.player_vel.xz = linalg.mul(r, vec4_point(movement)).xz * 3
 			}
-		}
 
-		movement: Vec3
+		case Player_State_Climb_Start:
+			end_yaw := math.asin(s.point.wanted_facing.y)/math.TAU + 0.5
+			t := f32(remap(g_mem.time, g_mem.state_start, g_mem.state_start + 1, 0, 1))
+			g_mem.yaw = math.lerp(s.start_yaw, end_yaw, t)
+			g_mem.pitch = math.lerp(s.start_pitch, 0, t)
 
-		if rl.IsKeyDown(.W) {
-			movement.z -= 1
-		}
+			end_pos := s.start - s.point.wanted_facing
 
-		if rl.IsKeyDown(.S) {
-			movement.z += 1
-		}
+			g_mem.player_pos = math.lerp(s.start, end_pos, t)
 
-		if rl.IsKeyDown(.A) {
-			movement.x -= 1
-		}
+			if t >= 1 {
+				g_mem.player_state = Player_State_Climb_Down {
+					start = g_mem.player_pos,
+					end = g_mem.player_pos - {0, 4, 0},
+				}
+				g_mem.state_start = g_mem.time
+			}
 
-		if rl.IsKeyDown(.D) {
-			movement.x += 1
-		}
+		case Player_State_Climb_Down:
+			t := f32(remap(g_mem.time, g_mem.state_start, g_mem.state_start + 3, 0, 1))
+			g_mem.player_pos = math.lerp(s.start, s.end, t)
 
-		g_mem.yaw -= rl.GetMouseDelta().x * rl.GetFrameTime() * 0.2
-		g_mem.pitch -= rl.GetMouseDelta().y * rl.GetFrameTime() * 0.2
-		g_mem.pitch = clamp(g_mem.pitch, -0.24, 0.24)
-		r := linalg.matrix4_rotate(g_mem.yaw * math.TAU, Vec3{0, 1, 0})
-		g_mem.player_vel.xz = linalg.mul(r, vec4_point(movement)).xz * 3
+			if t >= 1 {
+				g_mem.player_state = Player_State_Climb_End {
+					start_yaw = g_mem.yaw,
+				}
+				g_mem.state_start = g_mem.time
+			}
+
+		case Player_State_Climb_End:
+			t := f32(remap(g_mem.time, g_mem.state_start, g_mem.state_start + 1, 0, 1))
+			g_mem.yaw = math.lerp(s.start_yaw, s.start_yaw + 0.5, t)
+
+			if t >= 1 {
+				g_mem.player_state = Player_State_Default {}
+			}
 	}
 	
 	g_mem.player_vel.y -= rl.GetFrameTime() * 9.82
@@ -214,22 +290,48 @@ draw :: proc() {
 	rl.BeginDrawing()
 	rl.ClearBackground(rl.BLACK)
 
-	rl.BeginMode3D(game_camera())
+	cam := game_camera()
+	rl.BeginMode3D(cam)
 	draw_skybox()
 	rl.BeginShaderMode(g_mem.default_shader)
 
 	rl.SetShaderValue(g_mem.default_shader, rl.ShaderLocationIndex(g_mem.default_shader.locs[rl.ShaderLocationIndex.VECTOR_VIEW]), raw_data(&g_mem.player_pos), .VEC3)
 
-	rl.DrawModel(g_mem.teapot, {0, 0, -5}, 0.3, rl.WHITE)
+	rl.DrawModelEx(g_mem.teapot, {0, -4.5, -14}, {0, 1, 0}, 90, {0.3, 0.3, 0.3}, rl.WHITE)
 
 	for b in g_mem.boxes {
 		rl.DrawModelEx(g_mem.box, b.pos, 0, 0, b.size, rl.WHITE)
 		rl.DrawModelEx(g_mem.box, b.pos, 0, 0, b.size, rl.WHITE)
 	}
+
+	screen_mid := Vec2{f32(rl.GetScreenWidth()), f32(rl.GetScreenHeight())}*0.5
+	r := rl.GetMouseRay(screen_mid, cam)
+
+	crosshair_color := rl.GRAY
+	for c in g_mem.climb_points {
+		rl.DrawSphere(c.pos, 0.1, rl.RED)
+
+		if coll := rl.GetRayCollisionSphere(r, c.pos, 0.1); coll.hit && coll.distance < 1.5 {
+			crosshair_color = rl.GREEN
+
+			if rl.IsKeyPressed(.E) && union_type(g_mem.player_state) == Player_State_Default {
+				g_mem.player_state = Player_State_Climb_Start {
+					point = c,
+					start = g_mem.player_pos,
+					start_pitch = g_mem.pitch,
+					start_yaw = g_mem.yaw,
+				}
+				g_mem.state_start = g_mem.time
+				break
+			}
+		}
+	}
 	
 	rl.EndShaderMode()
 
 	rl.EndMode3D()
+
+	rl.DrawCircleV(screen_mid, 5, crosshair_color)
 
 	rl.EndDrawing()
 }
@@ -306,8 +408,6 @@ game_init :: proc() {
 
 	g_mem^ = GameMemory {
 		player_pos = {2, 2, -3},
-		yaw = 0.1,
-		pitch = -0.1,
 		default_shader = rl.LoadShader("default_lighting.vs", "default_lighting.fs"),
 		skybox_shader = rl.LoadShader("skybox.vs", "skybox.fs"),
 		teapot = rl.LoadModel("teapot.obj"),
@@ -329,6 +429,11 @@ game_init :: proc() {
 
 	set_light(0, true, {20, 100, -100}, { 0.8, 0.5, 0.5, 1 }, true)
 
+	append(&g_mem.climb_points, Climb_Point {
+		pos = {0,  0.2, -10},
+		wanted_facing = {0, 0, 1},
+	})
+
 	append(&g_mem.boxes, Box{
 		pos = {0, -5, 0},
 		size = {5, 10, 20},
@@ -341,7 +446,7 @@ game_init :: proc() {
 
 	append(&g_mem.boxes, Box{
 		pos = {0, -5, -11},
-		size = {2, 1, 2},
+		size = {2, 1, 10},
 	})
 
 	append(&g_mem.boxes, Box{
@@ -367,6 +472,7 @@ set_light :: proc(n: int, enabled: bool, pos: Vec3, color: Vec4, directional: bo
 game_shutdown :: proc() { 
 	rl.EnableCursor()
 	delete(g_mem.boxes)
+	delete(g_mem.climb_points)
 	free(g_mem)
 }
 
