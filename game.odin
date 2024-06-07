@@ -82,7 +82,7 @@ update :: proc() {
 		g_mem.yaw -= rl.GetMouseDelta().x * rl.GetFrameTime() * 0.2
 		g_mem.pitch -= rl.GetMouseDelta().y * rl.GetFrameTime() * 0.2
 		g_mem.pitch = clamp(g_mem.pitch, -0.24, 0.24)
-		r := camera_rot_matrix()
+		r := linalg.matrix4_rotate(g_mem.yaw * math.TAU, Vec3{0, 1, 0})
 		g_mem.player_vel.xz = linalg.mul(r, vec4_point(movement)).xz * 3
 	}
 	
@@ -314,7 +314,7 @@ game_init :: proc() {
 		box = rl.LoadModel("box.obj"),
 	}
 
-	ambient := Vec4{ 0.1, 0.1, 0.1, 1.0}
+	ambient := Vec4{ 0.2, 0.2, 0.3, 1.0}
 	rl.SetShaderValue(g_mem.default_shader, rl.GetShaderLocation(g_mem.default_shader, "ambient"), raw_data(&ambient), .VEC4)
 
 	for midx in 0..<g_mem.teapot.materialCount {
@@ -327,13 +327,11 @@ game_init :: proc() {
 	
 	g_mem.default_shader.locs[rl.ShaderLocationIndex.VECTOR_VIEW] = i32(rl.GetShaderLocation(g_mem.default_shader, "viewPos"))
 
-	set_light(0, true, {0, 2, 5}, { 0.8, 0.5, 0.5, 1 })
-	set_light(1, true, {0, 2, -5}, { 0.4, 0.8, 0.5, 1 })
-	set_light(3, true, {0, 2, -7}, { 0.4, 0.2, 0.9, 1 })
+	set_light(0, true, {20, 100, -100}, { 0.8, 0.5, 0.5, 1 }, true)
 
 	append(&g_mem.boxes, Box{
-		pos = {0, -1, 0},
-		size = {5, 1, 20},
+		pos = {0, -5, 0},
+		size = {5, 10, 20},
 	})
 
 	/*append(&g_mem.boxes, Box{
@@ -342,7 +340,7 @@ game_init :: proc() {
 	})*/
 
 	append(&g_mem.boxes, Box{
-		pos = {0, -1, -12},
+		pos = {0, -5, -11},
 		size = {2, 1, 2},
 	})
 
@@ -354,12 +352,13 @@ game_init :: proc() {
 	game_hot_reloaded(g_mem)
 }
 
-set_light :: proc(n: int, enabled: bool, pos: Vec3, color: Vec4) {
+set_light :: proc(n: int, enabled: bool, pos: Vec3, color: Vec4, directional: bool) {
 	enabled := int(enabled)
+	type := directional ? 1 : 0
 	pos := pos
 	color := color
 	rl.SetShaderValue(g_mem.default_shader, rl.GetShaderLocation(g_mem.default_shader, fmt.ctprintf("lights[%v].enabled", n)), &enabled, .INT)
-	rl.SetShaderValue(g_mem.default_shader, rl.GetShaderLocation(g_mem.default_shader, fmt.ctprintf("lights[%v].type", n)), &enabled, .INT)
+	rl.SetShaderValue(g_mem.default_shader, rl.GetShaderLocation(g_mem.default_shader, fmt.ctprintf("lights[%v].type", n)), &type, .INT)
 	rl.SetShaderValue(g_mem.default_shader, rl.GetShaderLocation(g_mem.default_shader, fmt.ctprintf("lights[%v].position", n)), raw_data(&pos), .VEC3)
 	rl.SetShaderValue(g_mem.default_shader, rl.GetShaderLocation(g_mem.default_shader, fmt.ctprintf("lights[%v].color", n)), raw_data(&color), .VEC4)
 }
