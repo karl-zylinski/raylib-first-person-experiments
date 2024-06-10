@@ -312,19 +312,25 @@ draw_world :: proc(shadowcaster: bool) {
 
 	cam := game_camera()
 
+	xz_cam_target := Vec3 {cam.target.x, 0, cam.target.z}
+	xz_cam_position := Vec3 {cam.position.x, 0, cam.position.z}
+	
 	if shadowcaster {
-		rl.DrawSphere({0, 0, -5}, 0.32, rl.WHITE)
-	} else {
-		xz_cam_target := Vec3 {cam.target.x, 0, cam.target.z}
-		xz_cam_position := Vec3 {cam.position.x, 0, cam.position.z}
-		cam_dir := linalg.normalize0(xz_cam_target - xz_cam_position)
-		forward := Vec3{0, 0, -1}
-		yr := math.acos(linalg.dot(cam_dir, forward)) * math.sign(linalg.dot(cam_dir, Vec3{-1, 0, 0}))
-
-		squirrel_transf := rl.MatrixTranslate(0, 0.5, -5)*rl.MatrixRotateY(yr)*rl.MatrixRotateX(math.TAU/4)
-
-		rl.DrawMesh(g_mem.plane_mesh, g_mem.squirrel_mat, squirrel_transf)
+		/*xz_cam_position = light_pos + g_mem.player_pos
+		xz_cam_position.y = 0
+		xz_cam_target = g_mem.player_pos
+		xz_cam_target.y = 0*/
 	}
+
+	cam_dir := linalg.normalize0(xz_cam_target - xz_cam_position)
+	forward := Vec3{0, 0, -1}
+	yr := math.acos(linalg.dot(cam_dir, forward)) * math.sign(linalg.dot(cam_dir, Vec3{-1, 0, 0}))
+
+	squirrel_transf := rl.MatrixTranslate(0, 0.43, -5)*rl.MatrixRotateY(yr)*rl.MatrixRotateX(math.TAU/4)
+
+	rl.rlDisableBackfaceCulling()
+	rl.DrawMesh(g_mem.plane_mesh, g_mem.squirrel_mat, squirrel_transf)
+	rl.rlEnableBackfaceCulling()
 }
 
 draw :: proc() {
@@ -334,8 +340,8 @@ draw :: proc() {
 	rl.ClearBackground(rl.WHITE)
 
 	lightCam := rl.Camera3D {
-		position = light_pos,
-		target = 0,
+		position = light_pos + g_mem.player_pos,
+		target = g_mem.player_pos,
 		up = {0, 1, 0},
 		fovy = 20,
 		projection = .ORTHOGRAPHIC,
@@ -410,6 +416,8 @@ draw :: proc() {
 	rl.EndMode3D()
 
 	rl.DrawCircleV(screen_mid, 5, crosshair_color)
+
+	//rl.DrawTextureEx(g_mem.shadow_map.depth, {}, 0, 0.2, rl.WHITE)
 
 	rl.EndDrawing()
 }
@@ -508,7 +516,7 @@ game_init :: proc() {
 	}
 
 	g_mem.squirrel_mat.maps[0].texture = g_mem.squirrel
-	//g_mem.squirrel_mat.maps[1].texture = g_mem.shadow_map.depth
+	g_mem.squirrel_mat.maps[10].texture = g_mem.shadow_map.depth
 
 	ambient := Vec4{ 0.2, 0.2, 0.3, 1.0}
 	rl.SetShaderValue(g_mem.default_shader, rl.GetShaderLocation(g_mem.default_shader, "ambient"), raw_data(&ambient), .VEC4)

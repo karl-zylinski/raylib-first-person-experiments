@@ -48,6 +48,11 @@ void main()
 {
 	// Texel color fetching from texture sampler
 	vec4 texelColor = texture(texture0, fragTexCoord);
+
+	if (texelColor.a == 0.0) {
+		discard;
+	}
+
 	vec3 lightDot = vec3(0.0);
 	float directionalDot = 0;
 	vec3 normal = normalize(fragNormal);
@@ -96,7 +101,9 @@ void main()
     // Slope-scale depth bias: depth biasing reduces "shadow acne" artifacts, where dark stripes appear all over the scene.
     // The solution is adding a small bias to the depth
     // In this case, the bias is proportional to the slope of the surface, relative to the light
-    float bias = 0.00001;
+
+    float bias = 0.00001 * tan(acos(dot(normal,l)));
+    //float bias = max(0.0001 * (1.0 - dot(normal, l)), 0.00002) + 0.00001;
     int shadowCounter = 0;
     const int numSamples = 9;
     // PCF (percentage-closer filtering) algorithm:
