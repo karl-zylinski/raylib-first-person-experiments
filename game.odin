@@ -75,6 +75,8 @@ GameMemory :: struct {
 	plane_mesh: rl.Mesh,
 	plane: rl.Model,
 	squirrel_mat: rl.Material,
+
+	shadow_map: rl.RenderTexture2D,
 }
 
 g_mem: ^GameMemory
@@ -92,8 +94,11 @@ player_eye_pos :: proc() -> Vec3 {
 	return g_mem.player_pos + {0, PLAYER_SIZE.y/4, 0}
 }
 
+dt: f32
+
 update :: proc() {
-	g_mem.time += f64(rl.GetFrameTime())
+	dt = min(rl.GetFrameTime(), 0.033)
+	g_mem.time += f64(dt)
 
 	switch &s in g_mem.player_state {
 		case Player_State_Default:
@@ -126,8 +131,8 @@ update :: proc() {
 					movement.x += 1
 				}
 
-				g_mem.yaw -= rl.GetMouseDelta().x * rl.GetFrameTime() * 0.2
-				g_mem.pitch -= rl.GetMouseDelta().y * rl.GetFrameTime() * 0.2
+				g_mem.yaw -= rl.GetMouseDelta().x * dt * 0.2
+				g_mem.pitch -= rl.GetMouseDelta().y * dt * 0.2
 				g_mem.pitch = clamp(g_mem.pitch, -0.24, 0.24)
 				r := linalg.matrix4_rotate(g_mem.yaw * math.TAU, Vec3{0, 1, 0})
 				g_mem.player_vel.xz = linalg.mul(r, vec4_point(movement)).xz * 3
@@ -171,8 +176,8 @@ update :: proc() {
 			}
 	}
 	
-	g_mem.player_vel.y -= rl.GetFrameTime() * 9.82
-	g_mem.player_pos.y += g_mem.player_vel.y * rl.GetFrameTime()
+	g_mem.player_vel.y -= dt * 9.82
+	g_mem.player_pos.y += g_mem.player_vel.y * dt
 	grounded := false
 
 	for b in g_mem.boxes {
@@ -189,7 +194,7 @@ update :: proc() {
 		}
 	}
 
-	g_mem.player_pos.x += g_mem.player_vel.x * rl.GetFrameTime()
+	g_mem.player_pos.x += g_mem.player_vel.x * dt
 
 	for b in g_mem.boxes {
 		bb := rl.BoundingBox {
@@ -230,74 +235,133 @@ update :: proc() {
 draw_skybox :: proc()
 {
 	rl.BeginShaderMode(g_mem.skybox_shader)
-    s :: 1000
-    c := rl.RED
+	s :: 1000
+	c := rl.RED
 
-    rl.rlPushMatrix()
-        rl.rlBegin(rl.RL_TRIANGLES)
-            rl.rlColor4ub(c.r, c.g, c.b, c.a)
+	rl.rlPushMatrix()
+		rl.rlBegin(rl.RL_TRIANGLES)
+			rl.rlColor4ub(c.r, c.g, c.b, c.a)
 
-            // Front face
-            rl.rlNormal3f(0, 0, -1)
-            rl.rlVertex3f(+s/2, -s/2, +s/2)
-            rl.rlVertex3f(-s/2, -s/2, +s/2)
-            rl.rlVertex3f(-s/2, +s/2, +s/2)
-            rl.rlVertex3f(-s/2, +s/2, +s/2)
-            rl.rlVertex3f(+s/2, +s/2, +s/2)
-            rl.rlVertex3f(+s/2, -s/2, +s/2)
+			// Front face
+			rl.rlNormal3f(0, 0, -1)
+			rl.rlVertex3f(+s/2, -s/2, +s/2)
+			rl.rlVertex3f(-s/2, -s/2, +s/2)
+			rl.rlVertex3f(-s/2, +s/2, +s/2)
+			rl.rlVertex3f(-s/2, +s/2, +s/2)
+			rl.rlVertex3f(+s/2, +s/2, +s/2)
+			rl.rlVertex3f(+s/2, -s/2, +s/2)
 
-            // Back
-            rl.rlNormal3f(0, 0, 1)
-            rl.rlVertex3f(-s/2, -s/2, -s/2)
-            rl.rlVertex3f(+s/2, -s/2, -s/2)
-            rl.rlVertex3f(-s/2, +s/2, -s/2)
-            rl.rlVertex3f(+s/2, +s/2, -s/2)
-            rl.rlVertex3f(-s/2, +s/2, -s/2)
-            rl.rlVertex3f(+s/2, -s/2, -s/2)
+			// Back
+			rl.rlNormal3f(0, 0, 1)
+			rl.rlVertex3f(-s/2, -s/2, -s/2)
+			rl.rlVertex3f(+s/2, -s/2, -s/2)
+			rl.rlVertex3f(-s/2, +s/2, -s/2)
+			rl.rlVertex3f(+s/2, +s/2, -s/2)
+			rl.rlVertex3f(-s/2, +s/2, -s/2)
+			rl.rlVertex3f(+s/2, -s/2, -s/2)
 
-            // Left
-            rl.rlNormal3f(-1, 0, 0)
-            rl.rlVertex3f(+s/2, -s/2, -s/2)
-            rl.rlVertex3f(+s/2, -s/2, +s/2)
-            rl.rlVertex3f(+s/2, +s/2, -s/2)
-            rl.rlVertex3f(+s/2, +s/2, +s/2)
-            rl.rlVertex3f(+s/2, +s/2, -s/2)
-            rl.rlVertex3f(+s/2, -s/2, +s/2)
+			// Left
+			rl.rlNormal3f(-1, 0, 0)
+			rl.rlVertex3f(+s/2, -s/2, -s/2)
+			rl.rlVertex3f(+s/2, -s/2, +s/2)
+			rl.rlVertex3f(+s/2, +s/2, -s/2)
+			rl.rlVertex3f(+s/2, +s/2, +s/2)
+			rl.rlVertex3f(+s/2, +s/2, -s/2)
+			rl.rlVertex3f(+s/2, -s/2, +s/2)
 
-            // Right
-            rl.rlNormal3f(1, 0, 0)
-            rl.rlVertex3f(-s/2, -s/2, +s/2)
-            rl.rlVertex3f(-s/2, -s/2, -s/2)
-            rl.rlVertex3f(-s/2, +s/2, -s/2)
-            rl.rlVertex3f(-s/2, +s/2, -s/2)
-            rl.rlVertex3f(-s/2, +s/2, +s/2)
-            rl.rlVertex3f(-s/2, -s/2, +s/2)
+			// Right
+			rl.rlNormal3f(1, 0, 0)
+			rl.rlVertex3f(-s/2, -s/2, +s/2)
+			rl.rlVertex3f(-s/2, -s/2, -s/2)
+			rl.rlVertex3f(-s/2, +s/2, -s/2)
+			rl.rlVertex3f(-s/2, +s/2, -s/2)
+			rl.rlVertex3f(-s/2, +s/2, +s/2)
+			rl.rlVertex3f(-s/2, -s/2, +s/2)
 
-            // Bottom
-            rl.rlNormal3f(0, 1, 0)
-            rl.rlVertex3f(-s/2, -s/2, -s/2)
-            rl.rlVertex3f(-s/2, -s/2, +s/2)
-            rl.rlVertex3f(+s/2, -s/2, -s/2)
-            rl.rlVertex3f(+s/2, -s/2, +s/2)
-            rl.rlVertex3f(+s/2, -s/2, -s/2)
-            rl.rlVertex3f(-s/2, -s/2, +s/2)
+			// Bottom
+			rl.rlNormal3f(0, 1, 0)
+			rl.rlVertex3f(-s/2, -s/2, -s/2)
+			rl.rlVertex3f(-s/2, -s/2, +s/2)
+			rl.rlVertex3f(+s/2, -s/2, -s/2)
+			rl.rlVertex3f(+s/2, -s/2, +s/2)
+			rl.rlVertex3f(+s/2, -s/2, -s/2)
+			rl.rlVertex3f(-s/2, -s/2, +s/2)
 
-            // Top
-            rl.rlNormal3f(0, -1, 0)
-            rl.rlVertex3f(-s/2, +s/2, +s/2)
-            rl.rlVertex3f(-s/2, +s/2, -s/2)
-            rl.rlVertex3f(+s/2, +s/2, -s/2)
-            rl.rlVertex3f(+s/2, +s/2, -s/2)
-            rl.rlVertex3f(+s/2, +s/2, +s/2)
-            rl.rlVertex3f(-s/2, +s/2, +s/2)
-        rl.rlEnd()
-    rl.rlPopMatrix()
-    rl.EndShaderMode()
+			// Top
+			rl.rlNormal3f(0, -1, 0)
+			rl.rlVertex3f(-s/2, +s/2, +s/2)
+			rl.rlVertex3f(-s/2, +s/2, -s/2)
+			rl.rlVertex3f(+s/2, +s/2, -s/2)
+			rl.rlVertex3f(+s/2, +s/2, -s/2)
+			rl.rlVertex3f(+s/2, +s/2, +s/2)
+			rl.rlVertex3f(-s/2, +s/2, +s/2)
+		rl.rlEnd()
+	rl.rlPopMatrix()
+	rl.EndShaderMode()
+}
+
+draw_world :: proc() {
+	rl.DrawModelEx(g_mem.teapot, {0, -4.5, -14}, {0, 1, 0}, 90, {0.3, 0.3, 0.3}, rl.WHITE)
+
+	for b in g_mem.boxes {
+		rl.DrawModelEx(g_mem.box, b.pos, 0, 0, b.size, rl.WHITE)
+	}
+
+	cam := game_camera()
+
+	xz_cam_target := Vec3 {cam.target.x, 0, cam.target.z}
+	xz_cam_position := Vec3 {cam.position.x, 0, cam.position.z}
+	cam_dir := linalg.normalize0(xz_cam_target - xz_cam_position)
+	forward := Vec3{0, 0, -1}
+	yr := math.acos(linalg.dot(cam_dir, forward)) * math.sign(linalg.dot(cam_dir, Vec3{-1, 0, 0}))
+
+	squirrel_transf := rl.MatrixTranslate(0, 0.5, -5)*rl.MatrixRotateY(yr)*rl.MatrixRotateX(math.TAU/4)
+
+	rl.DrawMesh(g_mem.plane_mesh, g_mem.squirrel_mat, squirrel_transf)
 }
 
 draw :: proc() {
 	rl.BeginDrawing()
+
+	rl.BeginTextureMode(g_mem.shadow_map)
+	rl.ClearBackground(rl.WHITE)
+
+	lightCam := rl.Camera3D {
+		position = LIGHT_POS,
+		target = 0,
+		up = {0, 1, 0},
+		fovy = 20,
+		projection = .ORTHOGRAPHIC,
+	}
+
+	rl.BeginMode3D(lightCam)
+	lightView := rl.rlGetMatrixModelview()
+	lightProj := rl.rlGetMatrixProjection()
+	draw_world()
+	rl.EndMode3D()
+	rl.EndTextureMode()
+
+    lightVPLoc := rl.GetShaderLocation(g_mem.default_shader, "lightVP")
+	lightViewProj := lightProj * lightView
+
+
+	rl.SetShaderValueMatrix(g_mem.default_shader, lightVPLoc, lightViewProj)
+
 	rl.ClearBackground(rl.BLACK)
+
+	/*shadowMapLoc := rl.GetShaderLocation(g_mem.default_shader, "shadowMap")
+
+	//rl.rlEnableTexture(g_mem.shadow_map.depth.id)
+
+	slot := 1 // Can be anything 0 to 15, but 0 will probably be taken up
+	rl.rlActiveTextureSlot(1)
+	rl.rlEnableTexture(g_mem.shadow_map.depth.id)
+	rl.rlSetUniform(i32(shadowMapLoc), &slot, i32(rl.ShaderUniformDataType.INT), 1)*/
+
+	/*shadowMapLoc := rl.GetShaderLocation(g_mem.default_shader, "shadowMap")
+	rl.SetShaderValueTexture(g_mem.default_shader, shadowMapLoc, g_mem.shadow_map.depth)*/
+
+//	rl.SetShaderValue(g_mem.default_shader, GetShaderLocation(g_mem.default_shader, "shadowMapResolution"), &shadowMapResolution, SHADER_UNIFORM_INT);
 
 	cam := game_camera()
 	rl.BeginMode3D(cam)
@@ -306,12 +370,7 @@ draw :: proc() {
 
 	rl.SetShaderValue(g_mem.default_shader, rl.ShaderLocationIndex(g_mem.default_shader.locs[rl.ShaderLocationIndex.VECTOR_VIEW]), raw_data(&g_mem.player_pos), .VEC3)
 
-	rl.DrawModelEx(g_mem.teapot, {0, -4.5, -14}, {0, 1, 0}, 90, {0.3, 0.3, 0.3}, rl.WHITE)
-
-	for b in g_mem.boxes {
-		rl.DrawModelEx(g_mem.box, b.pos, 0, 0, b.size, rl.WHITE)
-		rl.DrawModelEx(g_mem.box, b.pos, 0, 0, b.size, rl.WHITE)
-	}
+	draw_world()
 
 	screen_mid := Vec2{f32(rl.GetScreenWidth()), f32(rl.GetScreenHeight())}*0.5
 	r := rl.GetMouseRay(screen_mid, cam)
@@ -336,18 +395,6 @@ draw :: proc() {
 		}
 	}
 
-
-
-	xz_cam_target := Vec3 {cam.target.x, 0, cam.target.z}
-	xz_cam_position := Vec3 {cam.position.x, 0, cam.position.z}
-    cam_dir := linalg.normalize0(xz_cam_target - xz_cam_position)
-    forward := Vec3{0, 0, -1}
-    yr := math.acos(linalg.dot(cam_dir, forward)) * math.sign(linalg.dot(cam_dir, Vec3{-1, 0, 0}))
-
-
-	squirrel_transf := rl.MatrixTranslate(0, 0.5, -5)*rl.MatrixRotateY(yr)*rl.MatrixRotateX(math.TAU/4)
-
-	rl.DrawMesh(g_mem.plane_mesh, g_mem.squirrel_mat, squirrel_transf)
 	//rl.DrawModelEx(g_mem.plane, {0, 0.5, -5}, {1, 0, 0}, 90, {1,1,1}, rl.WHITE)
 	//rl.DrawBillboard(cam, g_mem.squirrel, {0, 0.5, -5}, 1, rl.WHITE)
 	
@@ -392,22 +439,22 @@ game_camera :: proc() -> rl.Camera {
 }
 
 check_collision_boxes :: proc(b1: rl.BoundingBox, b2: rl.BoundingBox) -> bool {
-    collision := true
+	collision := true
 
-    if ((b1.max.x > b2.min.x) && (b1.min.x < b2.max.x))
-    {
-        if (b1.max.y <= b2.min.y) || (b1.min.y >= b2.max.y) {
-        	collision = false
-        }
+	if ((b1.max.x > b2.min.x) && (b1.min.x < b2.max.x))
+	{
+		if (b1.max.y <= b2.min.y) || (b1.min.y >= b2.max.y) {
+			collision = false
+		}
 
-        if (b1.max.z <= b2.min.z) || (b1.min.z >= b2.max.z) {
-        	collision = false
-        }
-    } else {
-    	collision = false
-    }
+		if (b1.max.z <= b2.min.z) || (b1.min.z >= b2.max.z) {
+			collision = false
+		}
+	} else {
+		collision = false
+	}
 
-    return collision
+	return collision
 }
 
 // Check collision between two boxes
@@ -426,6 +473,8 @@ bounding_box_overlap :: proc(b1: rl.BoundingBox, b2: rl.BoundingBox) -> (res: rl
 	return
 }
 
+LIGHT_POS :: Vec3{20, 20, -20}
+
 @(export)
 game_init :: proc() {
 	g_mem = new(GameMemory)
@@ -440,7 +489,8 @@ game_init :: proc() {
 		plane_mesh = rl.GenMeshPlane(1, 1, 2, 2),
 
 	}
-
+	
+	g_mem.shadow_map = create_shadowmap_rt(4096, 4096)
 	g_mem.squirrel_mat = rl.LoadMaterialDefault()
 	g_mem.squirrel_mat.shader = g_mem.default_shader
 
@@ -451,6 +501,7 @@ game_init :: proc() {
 	}
 
 	g_mem.squirrel_mat.maps[0].texture = g_mem.squirrel
+	//g_mem.squirrel_mat.maps[1].texture = g_mem.shadow_map.depth
 
 	ambient := Vec4{ 0.2, 0.2, 0.3, 1.0}
 	rl.SetShaderValue(g_mem.default_shader, rl.GetShaderLocation(g_mem.default_shader, "ambient"), raw_data(&ambient), .VEC4)
@@ -459,14 +510,17 @@ game_init :: proc() {
 		g_mem.teapot.materials[midx].shader = g_mem.default_shader
 	}
 
+	g_mem.default_shader.locs[int(rl.ShaderLocationIndex.MAP_ALBEDO) + 10] = i32(rl.GetShaderLocation(g_mem.default_shader, "shadowMap"))
+
 	for midx in 0..<g_mem.box.materialCount {
 		g_mem.box.materials[midx].shader = g_mem.default_shader
+		g_mem.box.materials[midx].maps[10].texture = g_mem.shadow_map.depth
 	}
 	
 	g_mem.default_shader.locs[rl.ShaderLocationIndex.VECTOR_VIEW] = i32(rl.GetShaderLocation(g_mem.default_shader, "viewPos"))
 
-	set_light(0, true, {20, 100, -100}, { 1,1,1, 1 }, true)
-	set_light(1, true, {0, 3, -3}, { 1,1,1, 1 }, false)
+	set_light(0, true, LIGHT_POS, { 1,1,1, 1 }, true)
+	//set_light(1, true, {0, 3, -3}, { 1,1,1, 1 }, false)
 
 	append(&g_mem.climb_points, Climb_Point {
 		pos = {0,  0.2, -10},
@@ -489,11 +543,49 @@ game_init :: proc() {
 	})
 
 	append(&g_mem.boxes, Box{
-		pos = {0, 0, -3},
-		size = {3, 5, 1},
+		pos = {0, 2, -3},
+		size = {3, 2, 1},
 	})
 
 	game_hot_reloaded(g_mem)
+}
+
+
+create_shadowmap_rt :: proc(widthi, heighti: int) -> rl.RenderTexture2D {
+	width := i32(widthi)
+	height := i32(heighti)
+	target: rl.RenderTexture2D
+
+	target.id = rl.rlLoadFramebuffer(width, height) // Load an empty framebuffer
+	target.texture.width = width
+	target.texture.height = height
+
+	if (target.id > 0)
+	{
+		rl.rlEnableFramebuffer(target.id)
+
+		// Create depth texture
+		// We don't need a color texture for the shadowmap
+		target.depth.id = rl.rlLoadTextureDepth(width, height, false)
+		target.depth.width = width
+		target.depth.height = height
+		target.depth.format = rl.PixelFormat(19)       //DEPTH_COMPONENT_24BIT?
+		target.depth.mipmaps = 1
+
+		// Attach depth texture to FBO
+		rl.rlFramebufferAttach(target.id, target.depth.id, i32(rl.FramebufferAttachType.DEPTH), i32(rl.FramebufferAttachTextureType.TEXTURE2D), 0)
+
+		// Check if fbo is complete with attachments (valid)
+		if rl.rlFramebufferComplete(target.id) {
+			fmt.printfln("FBO: [ID %v] Framebuffer object created successfully", target.id)
+		}
+
+		rl.rlDisableFramebuffer()
+	} else {
+		fmt.println("FBO: Framebuffer object can not be created")
+	}
+
+	return target
 }
 
 set_light :: proc(n: int, enabled: bool, pos: Vec3, color: Vec4, directional: bool) {

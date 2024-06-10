@@ -27,17 +27,13 @@ struct Light {
 	vec4 color;
 };
 
+uniform mat4 lightVP; // Light source view-projection matrix
+uniform sampler2D shadowMap;
+
 // Input lighting values
 uniform Light lights[MAX_LIGHTS];
 uniform vec4 ambient;
 uniform vec3 viewPos;
-
-vec3 hsv2rgb(vec3 c)
-{
-	vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
-	vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
-	return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
-}
 
 float remap(float old_value, float old_min, float old_max, float new_min, float new_max) {
 	float old_range = old_max - old_min;
@@ -60,6 +56,7 @@ void main()
 	vec3 cB = vec3(0.922,0.686,0.329);
 
 	// NOTE: Implement here your fragment shader code
+	vec3 l;
 
 	float num_lights = 0;
 	for (int i = 0; i < MAX_LIGHTS; i++)
@@ -72,6 +69,7 @@ void main()
 			if (lights[i].type == LIGHT_DIRECTIONAL)
 			{
 				light = -normalize(lights[i].target - lights[i].position);
+				l = light;
 			}
 
 			if (lights[i].type == LIGHT_POINT)
@@ -88,6 +86,37 @@ void main()
 		}
 	}
 
+
+	 // Shadow calculations
+    vec4 fragPosLightSpace = lightVP * vec4(fragPosition, 1);
+    fragPosLightSpace.xyz /= fragPosLightSpace.w; // Perform the perspective division
+    fragPosLightSpace.xyz = (fragPosLightSpace.xyz + 1.0f) / 2.0f; // Transform from [-1, 1] range to [0, 1] range
+    vec2 sampleCoords = fragPosLightSpace.xy;
+    float curDepth = fragPosLightSpace.z;
+    // Slope-scale depth bias: depth biasing reduces "shadow acne" artifacts, where dark stripes appear all over the scene.
+    // The solution is adding a small bias to the depth
+    // In this case, the bias is proportional to the slope of the surface, relative to the light
+    float bias = max(0.0002 * (1.0 - dot(normal, l)), 0.00002) + 0.00001;
+    int shadowCounter = 0;
+    const int numSamples = 9;
+    // PCF (percentage-closer filtering) algorithm:
+    // Instead of testing if just one point is closer to the current point,
+    // we test the surrounding points as well.
+    // This blurs shadow edges, hiding aliasing artifacts.
+    vec2 texelSize = vec2(1.0f / 4096.0f);
+    for (int x = -1; x <= 1; x++)
+    {
+        for (int y = -1; y <= 1; y++)
+        {
+            float sampleDepth = texture(shadowMap, sampleCoords + texelSize * vec2(x, y)).r;
+            if (curDepth - bias > sampleDepth)
+            {
+                shadowCounter++;
+            }
+        }
+    }
+
+    lightDot = mix(lightDot, cA, float(shadowCounter) / float(numSamples));
 	finalColor = texelColor*colDiffuse*vec4(lightDot, 1);
 
 	// Gamma correction
