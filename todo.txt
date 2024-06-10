@@ -1,0 +1,1 @@
+- make shadowcaster not use big shadowing fragment shader
