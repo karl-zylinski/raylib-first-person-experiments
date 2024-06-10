@@ -97,7 +97,7 @@ player_eye_pos :: proc() -> Vec3 {
 dt: f32
 
 update :: proc() {
-	light_pos = {200*f32(math.cos(rl.GetTime())), 200, -200*f32(math.sin(rl.GetTime()))}
+	//light_pos = {200*f32(math.cos(rl.GetTime())), 200, -200*f32(math.sin(rl.GetTime()))}
 
 	set_light(0, true, light_pos, { 1,1,1, 1 }, true)
 	dt = min(rl.GetFrameTime(), 0.033)
