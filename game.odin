@@ -97,6 +97,9 @@ player_eye_pos :: proc() -> Vec3 {
 dt: f32
 
 update :: proc() {
+	light_pos = {200*f32(math.cos(rl.GetTime())), 200, -200*f32(math.sin(rl.GetTime()))}
+
+	set_light(0, true, light_pos, { 1,1,1, 1 }, true)
 	dt = min(rl.GetFrameTime(), 0.033)
 	g_mem.time += f64(dt)
 
@@ -300,7 +303,7 @@ draw_skybox :: proc()
 	rl.EndShaderMode()
 }
 
-draw_world :: proc() {
+draw_world :: proc(shadowcaster: bool) {
 	rl.DrawModelEx(g_mem.teapot, {0, -4.5, -14}, {0, 1, 0}, 90, {0.3, 0.3, 0.3}, rl.WHITE)
 
 	for b in g_mem.boxes {
@@ -309,15 +312,19 @@ draw_world :: proc() {
 
 	cam := game_camera()
 
-	xz_cam_target := Vec3 {cam.target.x, 0, cam.target.z}
-	xz_cam_position := Vec3 {cam.position.x, 0, cam.position.z}
-	cam_dir := linalg.normalize0(xz_cam_target - xz_cam_position)
-	forward := Vec3{0, 0, -1}
-	yr := math.acos(linalg.dot(cam_dir, forward)) * math.sign(linalg.dot(cam_dir, Vec3{-1, 0, 0}))
+	if shadowcaster {
+		rl.DrawSphere({0, 0, -5}, 0.32, rl.WHITE)
+	} else {
+		xz_cam_target := Vec3 {cam.target.x, 0, cam.target.z}
+		xz_cam_position := Vec3 {cam.position.x, 0, cam.position.z}
+		cam_dir := linalg.normalize0(xz_cam_target - xz_cam_position)
+		forward := Vec3{0, 0, -1}
+		yr := math.acos(linalg.dot(cam_dir, forward)) * math.sign(linalg.dot(cam_dir, Vec3{-1, 0, 0}))
 
-	squirrel_transf := rl.MatrixTranslate(0, 0.5, -5)*rl.MatrixRotateY(yr)*rl.MatrixRotateX(math.TAU/4)
+		squirrel_transf := rl.MatrixTranslate(0, 0.5, -5)*rl.MatrixRotateY(yr)*rl.MatrixRotateX(math.TAU/4)
 
-	rl.DrawMesh(g_mem.plane_mesh, g_mem.squirrel_mat, squirrel_transf)
+		rl.DrawMesh(g_mem.plane_mesh, g_mem.squirrel_mat, squirrel_transf)
+	}
 }
 
 draw :: proc() {
@@ -327,7 +334,7 @@ draw :: proc() {
 	rl.ClearBackground(rl.WHITE)
 
 	lightCam := rl.Camera3D {
-		position = LIGHT_POS,
+		position = light_pos,
 		target = 0,
 		up = {0, 1, 0},
 		fovy = 20,
@@ -337,7 +344,7 @@ draw :: proc() {
 	rl.BeginMode3D(lightCam)
 	lightView := rl.rlGetMatrixModelview()
 	lightProj := rl.rlGetMatrixProjection()
-	draw_world()
+	draw_world(true)
 	rl.EndMode3D()
 	rl.EndTextureMode()
 
@@ -370,7 +377,7 @@ draw :: proc() {
 
 	rl.SetShaderValue(g_mem.default_shader, rl.ShaderLocationIndex(g_mem.default_shader.locs[rl.ShaderLocationIndex.VECTOR_VIEW]), raw_data(&g_mem.player_pos), .VEC3)
 
-	draw_world()
+	draw_world(false)
 
 	screen_mid := Vec2{f32(rl.GetScreenWidth()), f32(rl.GetScreenHeight())}*0.5
 	r := rl.GetMouseRay(screen_mid, cam)
@@ -473,11 +480,11 @@ bounding_box_overlap :: proc(b1: rl.BoundingBox, b2: rl.BoundingBox) -> (res: rl
 	return
 }
 
-LIGHT_POS :: Vec3{20, 20, -20}
+light_pos := Vec3{20, 20, -20}
 
 @(export)
 game_init :: proc() {
-	g_mem = new(GameMemory)
+		g_mem = new(GameMemory)
 
 	g_mem^ = GameMemory {
 		player_pos = {2, 2, -3},
@@ -519,7 +526,7 @@ game_init :: proc() {
 	
 	g_mem.default_shader.locs[rl.ShaderLocationIndex.VECTOR_VIEW] = i32(rl.GetShaderLocation(g_mem.default_shader, "viewPos"))
 
-	set_light(0, true, LIGHT_POS, { 1,1,1, 1 }, true)
+	
 	//set_light(1, true, {0, 3, -3}, { 1,1,1, 1 }, false)
 
 	append(&g_mem.climb_points, Climb_Point {
@@ -543,8 +550,8 @@ game_init :: proc() {
 	})
 
 	append(&g_mem.boxes, Box{
-		pos = {0, 2, -3},
-		size = {3, 2, 1},
+		pos = {0, 0, -3},
+		size = {0.5, 5, 0.5},
 	})
 
 	game_hot_reloaded(g_mem)
