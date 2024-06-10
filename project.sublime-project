@@ -3,6 +3,7 @@
 	[
 		{
 			"path": ".",
+			"file_exclude_patterns": ["*.exp"],
 		},
 		{
 			"path": "C:\\repos\\raylib\\src",
@@ -11,7 +12,10 @@
 			"path": "C:\\Odin\\core",
 		},
 		{
-			"path": "C:\\Odin\\vendor\\raylib"
+			"path": "C:\\Odin\\vendor\\raylib",
+		},
+		{
+			"path": "C:\\Odin\\base"
 		},
 	],
 	"build_systems":

@@ -70,6 +70,11 @@ GameMemory :: struct {
 	mouse_captured: bool,
 	player_grounded: bool,
 	climb_points: [dynamic]Climb_Point,
+
+	squirrel: rl.Texture2D,
+	plane_mesh: rl.Mesh,
+	plane: rl.Model,
+	squirrel_mat: rl.Material,
 }
 
 g_mem: ^GameMemory
@@ -81,6 +86,10 @@ player_bounding_box :: proc() -> rl.BoundingBox {
 		min = g_mem.player_pos - PLAYER_SIZE*0.5,
 		max = g_mem.player_pos + PLAYER_SIZE*0.5,
 	}
+}
+
+player_eye_pos :: proc() -> Vec3 {
+	return g_mem.player_pos + {0, PLAYER_SIZE.y/4, 0}
 }
 
 update :: proc() {
@@ -326,6 +335,21 @@ draw :: proc() {
 			}
 		}
 	}
+
+
+
+	xz_cam_target := Vec3 {cam.target.x, 0, cam.target.z}
+	xz_cam_position := Vec3 {cam.position.x, 0, cam.position.z}
+    cam_dir := linalg.normalize0(xz_cam_target - xz_cam_position)
+    forward := Vec3{0, 0, -1}
+    yr := math.acos(linalg.dot(cam_dir, forward)) * math.sign(linalg.dot(cam_dir, Vec3{-1, 0, 0}))
+
+
+	squirrel_transf := rl.MatrixTranslate(0, 0.5, -5)*rl.MatrixRotateY(yr)*rl.MatrixRotateX(math.TAU/4)
+
+	rl.DrawMesh(g_mem.plane_mesh, g_mem.squirrel_mat, squirrel_transf)
+	//rl.DrawModelEx(g_mem.plane, {0, 0.5, -5}, {1, 0, 0}, 90, {1,1,1}, rl.WHITE)
+	//rl.DrawBillboard(cam, g_mem.squirrel, {0, 0.5, -5}, 1, rl.WHITE)
 	
 	rl.EndShaderMode()
 
@@ -359,8 +383,8 @@ camera_rot_matrix :: proc() -> Mat4 {
 
 game_camera :: proc() -> rl.Camera {
 	return {
-		position = g_mem.player_pos,
-		target = g_mem.player_pos + linalg.mul(camera_rot_matrix(), Vec4{0, 0, -1, 1}).xyz,
+		position = player_eye_pos(),
+		target = player_eye_pos() + linalg.mul(camera_rot_matrix(), Vec4{0, 0, -1, 1}).xyz,
 		up = {0, 1, 0},
 		fovy = 90,
 		projection = .PERSPECTIVE,
@@ -412,7 +436,21 @@ game_init :: proc() {
 		skybox_shader = rl.LoadShader("skybox.vs", "skybox.fs"),
 		teapot = rl.LoadModel("teapot.obj"),
 		box = rl.LoadModel("box.obj"),
+		squirrel = rl.LoadTexture("squirrel.png"),
+		plane_mesh = rl.GenMeshPlane(1, 1, 2, 2),
+
 	}
+
+	g_mem.squirrel_mat = rl.LoadMaterialDefault()
+	g_mem.squirrel_mat.shader = g_mem.default_shader
+
+	g_mem.plane = rl.LoadModelFromMesh(g_mem.plane_mesh)
+
+	for midx in 0..<g_mem.plane.materialCount {
+		g_mem.plane.materials[midx].shader = g_mem.default_shader
+	}
+
+	g_mem.squirrel_mat.maps[0].texture = g_mem.squirrel
 
 	ambient := Vec4{ 0.2, 0.2, 0.3, 1.0}
 	rl.SetShaderValue(g_mem.default_shader, rl.GetShaderLocation(g_mem.default_shader, "ambient"), raw_data(&ambient), .VEC4)
@@ -427,7 +465,8 @@ game_init :: proc() {
 	
 	g_mem.default_shader.locs[rl.ShaderLocationIndex.VECTOR_VIEW] = i32(rl.GetShaderLocation(g_mem.default_shader, "viewPos"))
 
-	set_light(0, true, {20, 100, -100}, { 0.8, 0.5, 0.5, 1 }, true)
+	set_light(0, true, {20, 100, -100}, { 1,1,1, 1 }, true)
+	set_light(1, true, {0, 3, -3}, { 1,1,1, 1 }, false)
 
 	append(&g_mem.climb_points, Climb_Point {
 		pos = {0,  0.2, -10},
@@ -459,7 +498,7 @@ game_init :: proc() {
 
 set_light :: proc(n: int, enabled: bool, pos: Vec3, color: Vec4, directional: bool) {
 	enabled := int(enabled)
-	type := directional ? 1 : 0
+	type := directional ? 0 : 1
 	pos := pos
 	color := color
 	rl.SetShaderValue(g_mem.default_shader, rl.GetShaderLocation(g_mem.default_shader, fmt.ctprintf("lights[%v].enabled", n)), &enabled, .INT)
