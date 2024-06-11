@@ -15,7 +15,10 @@
 			"path": "C:\\Odin\\vendor\\raylib",
 		},
 		{
-			"path": "C:\\Odin\\base"
+			"path": "C:\\Odin\\base",
+		},
+		{
+			"path": "C:\\Odin\\vendor"
 		},
 	],
 	"build_systems":

@@ -14,6 +14,7 @@ package game
 import "core:math/linalg"
 import "core:fmt"
 import rl "vendor:raylib"
+import rlgl "vendor:raylib/rlgl"
 import "core:math"
 
 _ :: linalg
@@ -241,65 +242,65 @@ draw_skybox :: proc()
 	s :: 1000
 	c := rl.RED
 
-	rl.rlPushMatrix()
-		rl.rlBegin(rl.RL_TRIANGLES)
-			rl.rlColor4ub(c.r, c.g, c.b, c.a)
+	rlgl.PushMatrix()
+		rlgl.Begin(rlgl.TRIANGLES)
+			rlgl.Color4ub(c.r, c.g, c.b, c.a)
 
 			// Front face
-			rl.rlNormal3f(0, 0, -1)
-			rl.rlVertex3f(+s/2, -s/2, +s/2)
-			rl.rlVertex3f(-s/2, -s/2, +s/2)
-			rl.rlVertex3f(-s/2, +s/2, +s/2)
-			rl.rlVertex3f(-s/2, +s/2, +s/2)
-			rl.rlVertex3f(+s/2, +s/2, +s/2)
-			rl.rlVertex3f(+s/2, -s/2, +s/2)
+			rlgl.Normal3f(0, 0, -1)
+			rlgl.Vertex3f(+s/2, -s/2, +s/2)
+			rlgl.Vertex3f(-s/2, -s/2, +s/2)
+			rlgl.Vertex3f(-s/2, +s/2, +s/2)
+			rlgl.Vertex3f(-s/2, +s/2, +s/2)
+			rlgl.Vertex3f(+s/2, +s/2, +s/2)
+			rlgl.Vertex3f(+s/2, -s/2, +s/2)
 
 			// Back
-			rl.rlNormal3f(0, 0, 1)
-			rl.rlVertex3f(-s/2, -s/2, -s/2)
-			rl.rlVertex3f(+s/2, -s/2, -s/2)
-			rl.rlVertex3f(-s/2, +s/2, -s/2)
-			rl.rlVertex3f(+s/2, +s/2, -s/2)
-			rl.rlVertex3f(-s/2, +s/2, -s/2)
-			rl.rlVertex3f(+s/2, -s/2, -s/2)
+			rlgl.Normal3f(0, 0, 1)
+			rlgl.Vertex3f(-s/2, -s/2, -s/2)
+			rlgl.Vertex3f(+s/2, -s/2, -s/2)
+			rlgl.Vertex3f(-s/2, +s/2, -s/2)
+			rlgl.Vertex3f(+s/2, +s/2, -s/2)
+			rlgl.Vertex3f(-s/2, +s/2, -s/2)
+			rlgl.Vertex3f(+s/2, -s/2, -s/2)
 
 			// Left
-			rl.rlNormal3f(-1, 0, 0)
-			rl.rlVertex3f(+s/2, -s/2, -s/2)
-			rl.rlVertex3f(+s/2, -s/2, +s/2)
-			rl.rlVertex3f(+s/2, +s/2, -s/2)
-			rl.rlVertex3f(+s/2, +s/2, +s/2)
-			rl.rlVertex3f(+s/2, +s/2, -s/2)
-			rl.rlVertex3f(+s/2, -s/2, +s/2)
+			rlgl.Normal3f(-1, 0, 0)
+			rlgl.Vertex3f(+s/2, -s/2, -s/2)
+			rlgl.Vertex3f(+s/2, -s/2, +s/2)
+			rlgl.Vertex3f(+s/2, +s/2, -s/2)
+			rlgl.Vertex3f(+s/2, +s/2, +s/2)
+			rlgl.Vertex3f(+s/2, +s/2, -s/2)
+			rlgl.Vertex3f(+s/2, -s/2, +s/2)
 
 			// Right
-			rl.rlNormal3f(1, 0, 0)
-			rl.rlVertex3f(-s/2, -s/2, +s/2)
-			rl.rlVertex3f(-s/2, -s/2, -s/2)
-			rl.rlVertex3f(-s/2, +s/2, -s/2)
-			rl.rlVertex3f(-s/2, +s/2, -s/2)
-			rl.rlVertex3f(-s/2, +s/2, +s/2)
-			rl.rlVertex3f(-s/2, -s/2, +s/2)
+			rlgl.Normal3f(1, 0, 0)
+			rlgl.Vertex3f(-s/2, -s/2, +s/2)
+			rlgl.Vertex3f(-s/2, -s/2, -s/2)
+			rlgl.Vertex3f(-s/2, +s/2, -s/2)
+			rlgl.Vertex3f(-s/2, +s/2, -s/2)
+			rlgl.Vertex3f(-s/2, +s/2, +s/2)
+			rlgl.Vertex3f(-s/2, -s/2, +s/2)
 
 			// Bottom
-			rl.rlNormal3f(0, 1, 0)
-			rl.rlVertex3f(-s/2, -s/2, -s/2)
-			rl.rlVertex3f(-s/2, -s/2, +s/2)
-			rl.rlVertex3f(+s/2, -s/2, -s/2)
-			rl.rlVertex3f(+s/2, -s/2, +s/2)
-			rl.rlVertex3f(+s/2, -s/2, -s/2)
-			rl.rlVertex3f(-s/2, -s/2, +s/2)
+			rlgl.Normal3f(0, 1, 0)
+			rlgl.Vertex3f(-s/2, -s/2, -s/2)
+			rlgl.Vertex3f(-s/2, -s/2, +s/2)
+			rlgl.Vertex3f(+s/2, -s/2, -s/2)
+			rlgl.Vertex3f(+s/2, -s/2, +s/2)
+			rlgl.Vertex3f(+s/2, -s/2, -s/2)
+			rlgl.Vertex3f(-s/2, -s/2, +s/2)
 
 			// Top
-			rl.rlNormal3f(0, -1, 0)
-			rl.rlVertex3f(-s/2, +s/2, +s/2)
-			rl.rlVertex3f(-s/2, +s/2, -s/2)
-			rl.rlVertex3f(+s/2, +s/2, -s/2)
-			rl.rlVertex3f(+s/2, +s/2, -s/2)
-			rl.rlVertex3f(+s/2, +s/2, +s/2)
-			rl.rlVertex3f(-s/2, +s/2, +s/2)
-		rl.rlEnd()
-	rl.rlPopMatrix()
+			rlgl.Normal3f(0, -1, 0)
+			rlgl.Vertex3f(-s/2, +s/2, +s/2)
+			rlgl.Vertex3f(-s/2, +s/2, -s/2)
+			rlgl.Vertex3f(+s/2, +s/2, -s/2)
+			rlgl.Vertex3f(+s/2, +s/2, -s/2)
+			rlgl.Vertex3f(+s/2, +s/2, +s/2)
+			rlgl.Vertex3f(-s/2, +s/2, +s/2)
+		rlgl.End()
+	rlgl.PopMatrix()
 	rl.EndShaderMode()
 }
 
@@ -328,9 +329,9 @@ draw_world :: proc(shadowcaster: bool) {
 
 	squirrel_transf := rl.MatrixTranslate(0, 0.43, -5)*rl.MatrixRotateY(yr)*rl.MatrixRotateX(math.TAU/4)
 
-	rl.rlDisableBackfaceCulling()
+	rlgl.DisableBackfaceCulling()
 	rl.DrawMesh(g_mem.plane_mesh, g_mem.squirrel_mat, squirrel_transf)
-	rl.rlEnableBackfaceCulling()
+	rlgl.EnableBackfaceCulling()
 }
 
 draw :: proc() {
@@ -348,8 +349,8 @@ draw :: proc() {
 	}
 
 	rl.BeginMode3D(lightCam)
-	lightView := rl.rlGetMatrixModelview()
-	lightProj := rl.rlGetMatrixProjection()
+	lightView := rlgl.GetMatrixModelview()
+	lightProj := rlgl.GetMatrixProjection()
 	draw_world(true)
 	rl.EndMode3D()
 	rl.EndTextureMode()
@@ -364,12 +365,12 @@ draw :: proc() {
 
 	/*shadowMapLoc := rl.GetShaderLocation(g_mem.default_shader, "shadowMap")
 
-	//rl.rlEnableTexture(g_mem.shadow_map.depth.id)
+	//rlgl.EnableTexture(g_mem.shadow_map.depth.id)
 
 	slot := 1 // Can be anything 0 to 15, but 0 will probably be taken up
-	rl.rlActiveTextureSlot(1)
-	rl.rlEnableTexture(g_mem.shadow_map.depth.id)
-	rl.rlSetUniform(i32(shadowMapLoc), &slot, i32(rl.ShaderUniformDataType.INT), 1)*/
+	rlgl.ActiveTextureSlot(1)
+	rlgl.EnableTexture(g_mem.shadow_map.depth.id)
+	rlgl.SetUniform(i32(shadowMapLoc), &slot, i32(rl.ShaderUniformDataType.INT), 1)*/
 
 	/*shadowMapLoc := rl.GetShaderLocation(g_mem.default_shader, "shadowMap")
 	rl.SetShaderValueTexture(g_mem.default_shader, shadowMapLoc, g_mem.shadow_map.depth)*/
@@ -492,7 +493,7 @@ light_pos := Vec3{20, 20, -20}
 
 @(export)
 game_init :: proc() {
-		g_mem = new(GameMemory)
+	g_mem = new(GameMemory)
 
 	g_mem^ = GameMemory {
 		player_pos = {2, 2, -3},
@@ -504,7 +505,7 @@ game_init :: proc() {
 		plane_mesh = rl.GenMeshPlane(1, 1, 2, 2),
 
 	}
-	
+
 	g_mem.shadow_map = create_shadowmap_rt(4096, 4096)
 	g_mem.squirrel_mat = rl.LoadMaterialDefault()
 	g_mem.squirrel_mat.shader = g_mem.default_shader
@@ -571,31 +572,31 @@ create_shadowmap_rt :: proc(widthi, heighti: int) -> rl.RenderTexture2D {
 	height := i32(heighti)
 	target: rl.RenderTexture2D
 
-	target.id = rl.rlLoadFramebuffer(width, height) // Load an empty framebuffer
+	target.id = rlgl.LoadFramebuffer(width, height) // Load an empty framebuffer
 	target.texture.width = width
 	target.texture.height = height
 
 	if (target.id > 0)
 	{
-		rl.rlEnableFramebuffer(target.id)
+		rlgl.EnableFramebuffer(target.id)
 
 		// Create depth texture
 		// We don't need a color texture for the shadowmap
-		target.depth.id = rl.rlLoadTextureDepth(width, height, false)
+		target.depth.id = rlgl.LoadTextureDepth(width, height, false)
 		target.depth.width = width
 		target.depth.height = height
 		target.depth.format = rl.PixelFormat(19)       //DEPTH_COMPONENT_24BIT?
 		target.depth.mipmaps = 1
 
 		// Attach depth texture to FBO
-		rl.rlFramebufferAttach(target.id, target.depth.id, i32(rl.FramebufferAttachType.DEPTH), i32(rl.FramebufferAttachTextureType.TEXTURE2D), 0)
+		rlgl.FramebufferAttach(target.id, target.depth.id, i32(rlgl.FramebufferAttachType.DEPTH), i32(rlgl.FramebufferAttachTextureType.TEXTURE2D), 0)
 
 		// Check if fbo is complete with attachments (valid)
-		if rl.rlFramebufferComplete(target.id) {
+		if rlgl.FramebufferComplete(target.id) {
 			fmt.printfln("FBO: [ID %v] Framebuffer object created successfully", target.id)
 		}
 
-		rl.rlDisableFramebuffer()
+		rlgl.DisableFramebuffer()
 	} else {
 		fmt.println("FBO: Framebuffer object can not be created")
 	}

@@ -1,1 +1,6 @@
+short term:
 - make shadowcaster not use big shadowing fragment shader
+
+long term:
+- navmesh baker
+- improve how shadows look
