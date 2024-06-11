@@ -334,15 +334,13 @@ draw_world :: proc(shadowcaster: bool) {
 	draw_billboard :: proc(pos: Vec3, texture: rl.Texture2D,  shadowcaster: bool) {
 		cam := game_camera()
 
-		xz_cam_target := Vec3 {cam.target.x, 0, cam.target.z}
 		xz_cam_position := Vec3 {cam.position.x, 0, cam.position.z}
 		
-
-		cam_dir := linalg.normalize0(xz_cam_target - xz_cam_position)
+		cam_dir := linalg.normalize0(Vec3{pos.x, 0, pos.z} - xz_cam_position)
 		forward := Vec3{0, 0, -1}
 		yr := math.acos(linalg.dot(cam_dir, forward)) * math.sign(linalg.dot(cam_dir, Vec3{-1, 0, 0}))
 
-		squirrel_transf := linalg.matrix4_translate(pos) * linalg.matrix4_rotate(yr, Vec3{0, 1, 0}) * linalg.matrix4_rotate(math.TAU/4, Vec3{1, 0, 0})
+		squirrel_transf := linalg.matrix4_translate(pos) * linalg.matrix4_rotate(yr, Vec3{0, 1, 0}) * linalg.matrix4_rotate(math.TAU/4, Vec3{1, 0, 0}) * linalg.matrix4_scale(Vec3{1, 0.01, 1})
 		g_mem.squirrel_mat.maps[0].texture = texture
 		g_mem.shadowcaster_mat_squirrel.maps[0].texture = texture
 		rl.DrawMesh(g_mem.plane_mesh, shadowcaster ? g_mem.shadowcaster_mat_squirrel : g_mem.squirrel_mat, auto_cast squirrel_transf)
