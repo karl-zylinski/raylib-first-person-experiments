@@ -315,7 +315,7 @@ draw_skybox :: proc() {
 }
 
 draw_world :: proc(shadowcaster: bool) {
-	//rl.DrawModelEx(g_mem.teapot, {0, -4.5, -14}, {0, 1, 0}, 90, {0.3, 0.3, 0.3}, rl.WHITE)
+	rl.DrawModelEx(g_mem.teapot, {0, -4.5, -14}, {0, 1, 0}, 90, {0.3, 0.3, 0.3}, rl.WHITE)
 
 	{
 		box_transforms := make([dynamic]rl.Matrix, context.temp_allocator)
@@ -590,14 +590,12 @@ game_init :: proc() {
 		g_mem.teapot.materials[midx].shader = g_mem.default_shader
 	}
 
-
 	for midx in 0..<g_mem.box.materialCount {
 		g_mem.box.materials[midx].shader = g_mem.default_shader
 		g_mem.box.materials[midx].maps[10].texture = g_mem.shadow_map.depth
     	g_mem.box.materials[midx].maps[rl.MaterialMapIndex.ALBEDO].color = rl.RED
 	}
 
-	
 	//set_light(1, true, {0, 3, -3}, { 1,1,1, 1 }, false)
 
 	append(&g_mem.climb_points, Climb_Point {
