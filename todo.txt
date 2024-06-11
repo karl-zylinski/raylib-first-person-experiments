@@ -1,5 +1,7 @@
 short term:
 - make shadowcaster not use big shadowing fragment shader
+- instancing
+- texture atlas
 
 long term:
 - navmesh baker

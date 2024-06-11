@@ -55,7 +55,7 @@ Player_State :: union #no_nil {
 	Player_State_Climb_End,
 }
 
-GameMemory :: struct {	
+Game_Memory :: struct {	
 	player_pos: Vec3,
 	player_vel: Vec3,
 	player_state: Player_State,
@@ -78,9 +78,12 @@ GameMemory :: struct {
 	squirrel_mat: rl.Material,
 
 	shadow_map: rl.RenderTexture2D,
+	shadowcaster_mat: rl.Material,
+	shadowcaster_shader: rl.Shader,
+	shadowcaster_mat_squirrel: rl.Material,
 }
 
-g_mem: ^GameMemory
+g_mem: ^Game_Memory
 
 PLAYER_SIZE :: Vec3 { 0.3, 1, 0.3 }
 
@@ -308,7 +311,11 @@ draw_world :: proc(shadowcaster: bool) {
 	rl.DrawModelEx(g_mem.teapot, {0, -4.5, -14}, {0, 1, 0}, 90, {0.3, 0.3, 0.3}, rl.WHITE)
 
 	for b in g_mem.boxes {
-		rl.DrawModelEx(g_mem.box, b.pos, 0, 0, b.size, rl.WHITE)
+		for i in 0..<g_mem.box.meshCount {
+        	mat := shadowcaster ? g_mem.shadowcaster_mat : g_mem.box.materials[g_mem.box.meshMaterial[i]]
+        	t := linalg.matrix4_translate(b.pos) * linalg.matrix4_scale(b.size)
+			rl.DrawMesh(g_mem.box.meshes[i], mat, auto_cast t)
+		}
 	}
 
 	cam := game_camera()
@@ -330,7 +337,7 @@ draw_world :: proc(shadowcaster: bool) {
 	squirrel_transf := rl.MatrixTranslate(0, 0.43, -5)*rl.MatrixRotateY(yr)*rl.MatrixRotateX(math.TAU/4)
 
 	rlgl.DisableBackfaceCulling()
-	rl.DrawMesh(g_mem.plane_mesh, g_mem.squirrel_mat, squirrel_transf)
+	rl.DrawMesh(g_mem.plane_mesh, shadowcaster ? g_mem.shadowcaster_mat_squirrel : g_mem.squirrel_mat, squirrel_transf)
 	rlgl.EnableBackfaceCulling()
 }
 
@@ -493,18 +500,25 @@ light_pos := Vec3{20, 20, -20}
 
 @(export)
 game_init :: proc() {
-	g_mem = new(GameMemory)
+	g_mem = new(Game_Memory)
 
-	g_mem^ = GameMemory {
+	g_mem^ = Game_Memory {
 		player_pos = {2, 2, -3},
 		default_shader = rl.LoadShader("default_lighting.vs", "default_lighting.fs"),
+		shadowcaster_shader = rl.LoadShader("shadowcaster.vs", "shadowcaster.fs"),
 		skybox_shader = rl.LoadShader("skybox.vs", "skybox.fs"),
 		teapot = rl.LoadModel("teapot.obj"),
 		box = rl.LoadModel("box.obj"),
 		squirrel = rl.LoadTexture("squirrel.png"),
 		plane_mesh = rl.GenMeshPlane(1, 1, 2, 2),
-
 	}
+
+	g_mem.shadowcaster_mat = rl.LoadMaterialDefault()
+	g_mem.shadowcaster_mat.shader = g_mem.shadowcaster_shader
+
+	g_mem.shadowcaster_mat_squirrel = rl.LoadMaterialDefault()
+	g_mem.shadowcaster_mat_squirrel.shader = g_mem.shadowcaster_shader
+	g_mem.shadowcaster_mat_squirrel.maps[0].texture = g_mem.squirrel
 
 	g_mem.shadow_map = create_shadowmap_rt(4096, 4096)
 	g_mem.squirrel_mat = rl.LoadMaterialDefault()
@@ -635,12 +649,12 @@ game_memory :: proc() -> rawptr {
 
 @(export)
 game_memory_size :: proc() -> int {
-	return size_of(GameMemory)
+	return size_of(Game_Memory)
 }
 
 @(export)
 game_hot_reloaded :: proc(mem: rawptr) {
-	g_mem = (^GameMemory)(mem)
+	g_mem = (^Game_Memory)(mem)
 }
 
 @(export)
