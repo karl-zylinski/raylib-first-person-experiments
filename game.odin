@@ -14,7 +14,7 @@ package game
 import "core:math/linalg"
 import "core:fmt"
 import rl "vendor:raylib"
-import rlgl "vendor:raylib/rlgl"
+import rg "vendor:raylib/rlgl"
 import "core:math"
 
 _ :: linalg
@@ -81,6 +81,9 @@ Game_Memory :: struct {
 	shadowcaster_mat: rl.Material,
 	shadowcaster_shader: rl.Shader,
 	shadowcaster_mat_squirrel: rl.Material,
+	instanced_lighting_mat: rl.Material,
+
+	cube: rl.Mesh,
 }
 
 g_mem: ^Game_Memory
@@ -238,87 +241,96 @@ update :: proc() {
 	}
 }
 
-
-draw_skybox :: proc()
-{
+draw_skybox :: proc() {
 	rl.BeginShaderMode(g_mem.skybox_shader)
 	s :: 1000
 	c := rl.RED
 
-	rlgl.PushMatrix()
-		rlgl.Begin(rlgl.TRIANGLES)
-			rlgl.Color4ub(c.r, c.g, c.b, c.a)
+	rg.PushMatrix()
+		rg.Begin(rg.TRIANGLES)
+			rg.Color4ub(c.r, c.g, c.b, c.a)
 
 			// Front face
-			rlgl.Normal3f(0, 0, -1)
-			rlgl.Vertex3f(+s/2, -s/2, +s/2)
-			rlgl.Vertex3f(-s/2, -s/2, +s/2)
-			rlgl.Vertex3f(-s/2, +s/2, +s/2)
-			rlgl.Vertex3f(-s/2, +s/2, +s/2)
-			rlgl.Vertex3f(+s/2, +s/2, +s/2)
-			rlgl.Vertex3f(+s/2, -s/2, +s/2)
+			rg.Normal3f(0, 0, -1)
+			rg.Vertex3f(+s/2, -s/2, +s/2)
+			rg.Vertex3f(-s/2, -s/2, +s/2)
+			rg.Vertex3f(-s/2, +s/2, +s/2)
+			rg.Vertex3f(-s/2, +s/2, +s/2)
+			rg.Vertex3f(+s/2, +s/2, +s/2)
+			rg.Vertex3f(+s/2, -s/2, +s/2)
 
 			// Back
-			rlgl.Normal3f(0, 0, 1)
-			rlgl.Vertex3f(-s/2, -s/2, -s/2)
-			rlgl.Vertex3f(+s/2, -s/2, -s/2)
-			rlgl.Vertex3f(-s/2, +s/2, -s/2)
-			rlgl.Vertex3f(+s/2, +s/2, -s/2)
-			rlgl.Vertex3f(-s/2, +s/2, -s/2)
-			rlgl.Vertex3f(+s/2, -s/2, -s/2)
+			rg.Normal3f(0, 0, 1)
+			rg.Vertex3f(-s/2, -s/2, -s/2)
+			rg.Vertex3f(+s/2, -s/2, -s/2)
+			rg.Vertex3f(-s/2, +s/2, -s/2)
+			rg.Vertex3f(+s/2, +s/2, -s/2)
+			rg.Vertex3f(-s/2, +s/2, -s/2)
+			rg.Vertex3f(+s/2, -s/2, -s/2)
 
 			// Left
-			rlgl.Normal3f(-1, 0, 0)
-			rlgl.Vertex3f(+s/2, -s/2, -s/2)
-			rlgl.Vertex3f(+s/2, -s/2, +s/2)
-			rlgl.Vertex3f(+s/2, +s/2, -s/2)
-			rlgl.Vertex3f(+s/2, +s/2, +s/2)
-			rlgl.Vertex3f(+s/2, +s/2, -s/2)
-			rlgl.Vertex3f(+s/2, -s/2, +s/2)
+			rg.Normal3f(-1, 0, 0)
+			rg.Vertex3f(+s/2, -s/2, -s/2)
+			rg.Vertex3f(+s/2, -s/2, +s/2)
+			rg.Vertex3f(+s/2, +s/2, -s/2)
+			rg.Vertex3f(+s/2, +s/2, +s/2)
+			rg.Vertex3f(+s/2, +s/2, -s/2)
+			rg.Vertex3f(+s/2, -s/2, +s/2)
 
 			// Right
-			rlgl.Normal3f(1, 0, 0)
-			rlgl.Vertex3f(-s/2, -s/2, +s/2)
-			rlgl.Vertex3f(-s/2, -s/2, -s/2)
-			rlgl.Vertex3f(-s/2, +s/2, -s/2)
-			rlgl.Vertex3f(-s/2, +s/2, -s/2)
-			rlgl.Vertex3f(-s/2, +s/2, +s/2)
-			rlgl.Vertex3f(-s/2, -s/2, +s/2)
+			rg.Normal3f(1, 0, 0)
+			rg.Vertex3f(-s/2, -s/2, +s/2)
+			rg.Vertex3f(-s/2, -s/2, -s/2)
+			rg.Vertex3f(-s/2, +s/2, -s/2)
+			rg.Vertex3f(-s/2, +s/2, -s/2)
+			rg.Vertex3f(-s/2, +s/2, +s/2)
+			rg.Vertex3f(-s/2, -s/2, +s/2)
 
 			// Bottom
-			rlgl.Normal3f(0, 1, 0)
-			rlgl.Vertex3f(-s/2, -s/2, -s/2)
-			rlgl.Vertex3f(-s/2, -s/2, +s/2)
-			rlgl.Vertex3f(+s/2, -s/2, -s/2)
-			rlgl.Vertex3f(+s/2, -s/2, +s/2)
-			rlgl.Vertex3f(+s/2, -s/2, -s/2)
-			rlgl.Vertex3f(-s/2, -s/2, +s/2)
+			rg.Normal3f(0, 1, 0)
+			rg.Vertex3f(-s/2, -s/2, -s/2)
+			rg.Vertex3f(-s/2, -s/2, +s/2)
+			rg.Vertex3f(+s/2, -s/2, -s/2)
+			rg.Vertex3f(+s/2, -s/2, +s/2)
+			rg.Vertex3f(+s/2, -s/2, -s/2)
+			rg.Vertex3f(-s/2, -s/2, +s/2)
 
 			// Top
-			rlgl.Normal3f(0, -1, 0)
-			rlgl.Vertex3f(-s/2, +s/2, +s/2)
-			rlgl.Vertex3f(-s/2, +s/2, -s/2)
-			rlgl.Vertex3f(+s/2, +s/2, -s/2)
-			rlgl.Vertex3f(+s/2, +s/2, -s/2)
-			rlgl.Vertex3f(+s/2, +s/2, +s/2)
-			rlgl.Vertex3f(-s/2, +s/2, +s/2)
-		rlgl.End()
-	rlgl.PopMatrix()
+			rg.Normal3f(0, -1, 0)
+			rg.Vertex3f(-s/2, +s/2, +s/2)
+			rg.Vertex3f(-s/2, +s/2, -s/2)
+			rg.Vertex3f(+s/2, +s/2, -s/2)
+			rg.Vertex3f(+s/2, +s/2, -s/2)
+			rg.Vertex3f(+s/2, +s/2, +s/2)
+			rg.Vertex3f(-s/2, +s/2, +s/2)
+		rg.End()
+	rg.PopMatrix()
 	rl.EndShaderMode()
 }
 
 draw_world :: proc(shadowcaster: bool) {
-	rl.DrawModelEx(g_mem.teapot, {0, -4.5, -14}, {0, 1, 0}, 90, {0.3, 0.3, 0.3}, rl.WHITE)
+	rl.DrawCubeV({0, 0, -4}, 1, rl.WHITE)
+	//rl.DrawModelEx(g_mem.teapot, {0, -4.5, -14}, {0, 1, 0}, 90, {0.3, 0.3, 0.3}, rl.WHITE)
 
-	for b in g_mem.boxes {
-		for i in 0..<g_mem.box.meshCount {
-        	mat := shadowcaster ? g_mem.shadowcaster_mat : g_mem.box.materials[g_mem.box.meshMaterial[i]]
-        	t := linalg.matrix4_translate(b.pos) * linalg.matrix4_scale(b.size)
-			rl.DrawMesh(g_mem.box.meshes[i], mat, auto_cast t)
+	{
+		box_transforms := make([dynamic]rl.Matrix, context.temp_allocator)
+
+		for b in g_mem.boxes {
+			m: rl.Matrix = auto_cast (linalg.matrix4_translate(b.pos) * linalg.matrix4_scale(b.size))
+			append(&box_transforms, m)
 		}
+
+		mat := shadowcaster ? g_mem.shadowcaster_mat : g_mem.instanced_lighting_mat
+
+		rl.DrawMeshInstanced(g_mem.box.meshes[0], mat, raw_data(box_transforms), i32(len(box_transforms)))
 	}
 
-	cam := game_camera()
+	/*for b in g_mem.boxes {
+		m: rl.Matrix = auto_cast (linalg.matrix4_translate(b.pos) * linalg.matrix4_scale(b.size))
+		rl.DrawMesh(g_mem.cube, g_mem.instanced_lighting_mat, m)
+	}*/
+
+	/*cam := game_camera()
 
 	xz_cam_target := Vec3 {cam.target.x, 0, cam.target.z}
 	xz_cam_position := Vec3 {cam.position.x, 0, cam.position.z}
@@ -336,9 +348,9 @@ draw_world :: proc(shadowcaster: bool) {
 
 	squirrel_transf := rl.MatrixTranslate(0, 0.43, -5)*rl.MatrixRotateY(yr)*rl.MatrixRotateX(math.TAU/4)
 
-	rlgl.DisableBackfaceCulling()
+	rg.DisableBackfaceCulling()
 	rl.DrawMesh(g_mem.plane_mesh, shadowcaster ? g_mem.shadowcaster_mat_squirrel : g_mem.squirrel_mat, squirrel_transf)
-	rlgl.EnableBackfaceCulling()
+	rg.EnableBackfaceCulling()*/
 }
 
 draw :: proc() {
@@ -356,13 +368,13 @@ draw :: proc() {
 	}
 
 	rl.BeginMode3D(lightCam)
-	lightView := rlgl.GetMatrixModelview()
-	lightProj := rlgl.GetMatrixProjection()
+	lightView := rg.GetMatrixModelview()
+	lightProj := rg.GetMatrixProjection()
 	draw_world(true)
 	rl.EndMode3D()
 	rl.EndTextureMode()
 
-    lightVPLoc := rl.GetShaderLocation(g_mem.default_shader, "lightVP")
+	lightVPLoc := rl.GetShaderLocation(g_mem.default_shader, "lightVP")
 	lightViewProj := lightProj * lightView
 
 
@@ -372,12 +384,12 @@ draw :: proc() {
 
 	/*shadowMapLoc := rl.GetShaderLocation(g_mem.default_shader, "shadowMap")
 
-	//rlgl.EnableTexture(g_mem.shadow_map.depth.id)
+	//rg.EnableTexture(g_mem.shadow_map.depth.id)
 
 	slot := 1 // Can be anything 0 to 15, but 0 will probably be taken up
-	rlgl.ActiveTextureSlot(1)
-	rlgl.EnableTexture(g_mem.shadow_map.depth.id)
-	rlgl.SetUniform(i32(shadowMapLoc), &slot, i32(rl.ShaderUniformDataType.INT), 1)*/
+	rg.ActiveTextureSlot(1)
+	rg.EnableTexture(g_mem.shadow_map.depth.id)
+	rg.SetUniform(i32(shadowMapLoc), &slot, i32(rl.ShaderUniformDataType.INT), 1)*/
 
 	/*shadowMapLoc := rl.GetShaderLocation(g_mem.default_shader, "shadowMap")
 	rl.SetShaderValueTexture(g_mem.default_shader, shadowMapLoc, g_mem.shadow_map.depth)*/
@@ -386,8 +398,8 @@ draw :: proc() {
 
 	cam := game_camera()
 	rl.BeginMode3D(cam)
+	//rl.BeginShaderMode(g_mem.default_shader)
 	draw_skybox()
-	rl.BeginShaderMode(g_mem.default_shader)
 
 	rl.SetShaderValue(g_mem.default_shader, rl.ShaderLocationIndex(g_mem.default_shader.locs[rl.ShaderLocationIndex.VECTOR_VIEW]), raw_data(&g_mem.player_pos), .VEC3)
 
@@ -418,9 +430,8 @@ draw :: proc() {
 
 	//rl.DrawModelEx(g_mem.plane, {0, 0.5, -5}, {1, 0, 0}, 90, {1,1,1}, rl.WHITE)
 	//rl.DrawBillboard(cam, g_mem.squirrel, {0, 0.5, -5}, 1, rl.WHITE)
-	
-	rl.EndShaderMode()
-
+		
+	//rl.EndShaderMode()
 	rl.EndMode3D()
 
 	rl.DrawCircleV(screen_mid, 5, crosshair_color)
@@ -511,7 +522,23 @@ game_init :: proc() {
 		box = rl.LoadModel("box.obj"),
 		squirrel = rl.LoadTexture("squirrel.png"),
 		plane_mesh = rl.GenMeshPlane(1, 1, 2, 2),
+    	cube = rl.GenMeshCube(1, 1, 1),
 	}
+
+	g_mem.shadow_map = create_shadowmap_rt(4096, 4096)
+
+	
+	g_mem.default_shader.locs[rl.ShaderLocationIndex.VECTOR_VIEW] = rl.GetShaderLocation(g_mem.default_shader, "viewPos")
+    g_mem.default_shader.locs[rl.ShaderLocationIndex.MATRIX_MVP] = rl.GetShaderLocation(g_mem.default_shader, "mvp")
+	g_mem.default_shader.locs[rl.ShaderLocationIndex.MATRIX_MODEL] = rl.GetShaderLocationAttrib(g_mem.default_shader, "instanceTransform")
+	g_mem.default_shader.locs[int(rl.ShaderLocationIndex.MAP_ALBEDO) + 10] = rl.GetShaderLocation(g_mem.default_shader, "shadowMap")
+
+    g_mem.shadowcaster_shader.locs[rl.ShaderLocationIndex.MATRIX_MVP] = rl.GetShaderLocation(g_mem.shadowcaster_shader, "mvp")
+	g_mem.shadowcaster_shader.locs[rl.ShaderLocationIndex.MATRIX_MODEL] = rl.GetShaderLocationAttrib(g_mem.shadowcaster_shader, "instanceTransform")
+
+	g_mem.instanced_lighting_mat = rl.LoadMaterialDefault()
+	g_mem.instanced_lighting_mat.shader = g_mem.default_shader
+	g_mem.instanced_lighting_mat.maps[10].texture = g_mem.shadow_map.depth
 
 	g_mem.shadowcaster_mat = rl.LoadMaterialDefault()
 	g_mem.shadowcaster_mat.shader = g_mem.shadowcaster_shader
@@ -520,7 +547,6 @@ game_init :: proc() {
 	g_mem.shadowcaster_mat_squirrel.shader = g_mem.shadowcaster_shader
 	g_mem.shadowcaster_mat_squirrel.maps[0].texture = g_mem.squirrel
 
-	g_mem.shadow_map = create_shadowmap_rt(4096, 4096)
 	g_mem.squirrel_mat = rl.LoadMaterialDefault()
 	g_mem.squirrel_mat.shader = g_mem.default_shader
 
@@ -540,14 +566,12 @@ game_init :: proc() {
 		g_mem.teapot.materials[midx].shader = g_mem.default_shader
 	}
 
-	g_mem.default_shader.locs[int(rl.ShaderLocationIndex.MAP_ALBEDO) + 10] = i32(rl.GetShaderLocation(g_mem.default_shader, "shadowMap"))
 
 	for midx in 0..<g_mem.box.materialCount {
 		g_mem.box.materials[midx].shader = g_mem.default_shader
 		g_mem.box.materials[midx].maps[10].texture = g_mem.shadow_map.depth
+    	g_mem.box.materials[midx].maps[rl.MaterialMapIndex.ALBEDO].color = rl.RED
 	}
-	
-	g_mem.default_shader.locs[rl.ShaderLocationIndex.VECTOR_VIEW] = i32(rl.GetShaderLocation(g_mem.default_shader, "viewPos"))
 
 	
 	//set_light(1, true, {0, 3, -3}, { 1,1,1, 1 }, false)
@@ -586,31 +610,31 @@ create_shadowmap_rt :: proc(widthi, heighti: int) -> rl.RenderTexture2D {
 	height := i32(heighti)
 	target: rl.RenderTexture2D
 
-	target.id = rlgl.LoadFramebuffer(width, height) // Load an empty framebuffer
+	target.id = rg.LoadFramebuffer(width, height) // Load an empty framebuffer
 	target.texture.width = width
 	target.texture.height = height
 
 	if (target.id > 0)
 	{
-		rlgl.EnableFramebuffer(target.id)
+		rg.EnableFramebuffer(target.id)
 
 		// Create depth texture
 		// We don't need a color texture for the shadowmap
-		target.depth.id = rlgl.LoadTextureDepth(width, height, false)
+		target.depth.id = rg.LoadTextureDepth(width, height, false)
 		target.depth.width = width
 		target.depth.height = height
 		target.depth.format = rl.PixelFormat(19)       //DEPTH_COMPONENT_24BIT?
 		target.depth.mipmaps = 1
 
 		// Attach depth texture to FBO
-		rlgl.FramebufferAttach(target.id, target.depth.id, i32(rlgl.FramebufferAttachType.DEPTH), i32(rlgl.FramebufferAttachTextureType.TEXTURE2D), 0)
+		rg.FramebufferAttach(target.id, target.depth.id, i32(rg.FramebufferAttachType.DEPTH), i32(rg.FramebufferAttachTextureType.TEXTURE2D), 0)
 
 		// Check if fbo is complete with attachments (valid)
-		if rlgl.FramebufferComplete(target.id) {
+		if rg.FramebufferComplete(target.id) {
 			fmt.printfln("FBO: [ID %v] Framebuffer object created successfully", target.id)
 		}
 
-		rlgl.DisableFramebuffer()
+		rg.DisableFramebuffer()
 	} else {
 		fmt.println("FBO: Framebuffer object can not be created")
 	}

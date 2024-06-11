@@ -1,5 +1,5 @@
 short term:
-- make shadowcaster not use big shadowing fragment shader
+X make shadowcaster not use big shadowing fragment shader
 - instancing
 - texture atlas
 
