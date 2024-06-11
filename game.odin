@@ -76,6 +76,7 @@ Game_Memory :: struct {
 	climb_points: [dynamic]Climb_Point,
 
 	squirrel: rl.Texture2D,
+	cat: rl.Texture2D,
 	plane_mesh: rl.Mesh,
 	plane: rl.Model,
 
@@ -330,26 +331,26 @@ draw_world :: proc(shadowcaster: bool) {
 		rl.DrawMeshInstanced(g_mem.box.meshes[0], mat, raw_data(box_transforms), i32(len(box_transforms)))
 	}
 
-	cam := game_camera()
+	draw_billboard :: proc(pos: Vec3, texture: rl.Texture2D,  shadowcaster: bool) {
+		cam := game_camera()
 
-	xz_cam_target := Vec3 {cam.target.x, 0, cam.target.z}
-	xz_cam_position := Vec3 {cam.position.x, 0, cam.position.z}
-	
-	if shadowcaster {
-		/*xz_cam_position = light_pos + g_mem.player_pos
-		xz_cam_position.y = 0
-		xz_cam_target = g_mem.player_pos
-		xz_cam_target.y = 0*/
+		xz_cam_target := Vec3 {cam.target.x, 0, cam.target.z}
+		xz_cam_position := Vec3 {cam.position.x, 0, cam.position.z}
+		
+
+		cam_dir := linalg.normalize0(xz_cam_target - xz_cam_position)
+		forward := Vec3{0, 0, -1}
+		yr := math.acos(linalg.dot(cam_dir, forward)) * math.sign(linalg.dot(cam_dir, Vec3{-1, 0, 0}))
+
+		squirrel_transf := linalg.matrix4_translate(pos) * linalg.matrix4_rotate(yr, Vec3{0, 1, 0}) * linalg.matrix4_rotate(math.TAU/4, Vec3{1, 0, 0})
+		g_mem.squirrel_mat.maps[0].texture = texture
+		g_mem.shadowcaster_mat_squirrel.maps[0].texture = texture
+		rl.DrawMesh(g_mem.plane_mesh, shadowcaster ? g_mem.shadowcaster_mat_squirrel : g_mem.squirrel_mat, auto_cast squirrel_transf)
 	}
 
-	cam_dir := linalg.normalize0(xz_cam_target - xz_cam_position)
-	forward := Vec3{0, 0, -1}
-	yr := math.acos(linalg.dot(cam_dir, forward)) * math.sign(linalg.dot(cam_dir, Vec3{-1, 0, 0}))
-
-	squirrel_transf := rl.MatrixTranslate(0, 0.43, -5)*rl.MatrixRotateY(yr)*rl.MatrixRotateX(math.TAU/4)
-
 	rg.DisableBackfaceCulling()
-	rl.DrawMesh(g_mem.plane_mesh, shadowcaster ? g_mem.shadowcaster_mat_squirrel : g_mem.squirrel_mat, squirrel_transf)
+	draw_billboard({0, 0.43, -5}, g_mem.squirrel, shadowcaster)
+	draw_billboard({2, 0.5, -5}, g_mem.cat, shadowcaster)
 	rg.EnableBackfaceCulling()
 }
 
@@ -524,6 +525,7 @@ game_init :: proc() {
 		teapot = rl.LoadModel("teapot.obj"),
 		box = rl.LoadModel("box.obj"),
 		squirrel = rl.LoadTexture("squirrel.png"),
+		cat = rl.LoadTexture("cat.png"),
 		plane_mesh = rl.GenMeshPlane(1, 1, 2, 2),
     	cube = rl.GenMeshCube(1, 1, 1),
     	shadow_map = create_shadowmap_rt(4096, 4096),
