@@ -64,6 +64,9 @@ Game_Memory :: struct {
 	yaw: f32,
 	pitch: f32,
 	default_shader: rl.Shader,
+	default_shader_instanced: rl.Shader,
+	shadowcasting_shader: rl.Shader,
+	shadowcasting_shader_instanced: rl.Shader,
 	skybox_shader: rl.Shader,
 	teapot: rl.Model,
 	box: rl.Model,
@@ -75,13 +78,16 @@ Game_Memory :: struct {
 	squirrel: rl.Texture2D,
 	plane_mesh: rl.Mesh,
 	plane: rl.Model,
-	squirrel_mat: rl.Material,
 
 	shadow_map: rl.RenderTexture2D,
-	shadowcaster_mat: rl.Material,
-	shadowcaster_shader: rl.Shader,
+
+	squirrel_mat: rl.Material,
 	shadowcaster_mat_squirrel: rl.Material,
-	instanced_lighting_mat: rl.Material,
+
+	default_mat: rl.Material,
+	default_mat_instanced: rl.Material,
+	shadowcasting_mat: rl.Material,
+	shadowcasting_mat_instanced: rl.Material,
 
 	cube: rl.Mesh,
 }
@@ -309,7 +315,6 @@ draw_skybox :: proc() {
 }
 
 draw_world :: proc(shadowcaster: bool) {
-	rl.DrawCubeV({0, 0, -4}, 1, rl.WHITE)
 	//rl.DrawModelEx(g_mem.teapot, {0, -4.5, -14}, {0, 1, 0}, 90, {0.3, 0.3, 0.3}, rl.WHITE)
 
 	{
@@ -320,17 +325,12 @@ draw_world :: proc(shadowcaster: bool) {
 			append(&box_transforms, m)
 		}
 
-		mat := shadowcaster ? g_mem.shadowcaster_mat : g_mem.instanced_lighting_mat
+		mat := shadowcaster ? g_mem.shadowcasting_mat_instanced : g_mem.default_mat_instanced
 
 		rl.DrawMeshInstanced(g_mem.box.meshes[0], mat, raw_data(box_transforms), i32(len(box_transforms)))
 	}
 
-	/*for b in g_mem.boxes {
-		m: rl.Matrix = auto_cast (linalg.matrix4_translate(b.pos) * linalg.matrix4_scale(b.size))
-		rl.DrawMesh(g_mem.cube, g_mem.instanced_lighting_mat, m)
-	}*/
-
-	/*cam := game_camera()
+	cam := game_camera()
 
 	xz_cam_target := Vec3 {cam.target.x, 0, cam.target.z}
 	xz_cam_position := Vec3 {cam.position.x, 0, cam.position.z}
@@ -350,7 +350,7 @@ draw_world :: proc(shadowcaster: bool) {
 
 	rg.DisableBackfaceCulling()
 	rl.DrawMesh(g_mem.plane_mesh, shadowcaster ? g_mem.shadowcaster_mat_squirrel : g_mem.squirrel_mat, squirrel_transf)
-	rg.EnableBackfaceCulling()*/
+	rg.EnableBackfaceCulling()
 }
 
 draw :: proc() {
@@ -379,6 +379,7 @@ draw :: proc() {
 
 
 	rl.SetShaderValueMatrix(g_mem.default_shader, lightVPLoc, lightViewProj)
+	rl.SetShaderValueMatrix(g_mem.default_shader_instanced, lightVPLoc, lightViewProj)
 
 	rl.ClearBackground(rl.BLACK)
 
@@ -516,35 +517,56 @@ game_init :: proc() {
 	g_mem^ = Game_Memory {
 		player_pos = {2, 2, -3},
 		default_shader = rl.LoadShader("default_lighting.vs", "default_lighting.fs"),
-		shadowcaster_shader = rl.LoadShader("shadowcaster.vs", "shadowcaster.fs"),
+		default_shader_instanced = rl.LoadShader("default_lighting_instanced.vs", "default_lighting.fs"),
+		shadowcasting_shader = rl.LoadShader("shadowcaster.vs", "shadowcaster.fs"),
+		shadowcasting_shader_instanced = rl.LoadShader("shadowcaster_instanced.vs", "shadowcaster.fs"),
 		skybox_shader = rl.LoadShader("skybox.vs", "skybox.fs"),
 		teapot = rl.LoadModel("teapot.obj"),
 		box = rl.LoadModel("box.obj"),
 		squirrel = rl.LoadTexture("squirrel.png"),
 		plane_mesh = rl.GenMeshPlane(1, 1, 2, 2),
     	cube = rl.GenMeshCube(1, 1, 1),
+    	shadow_map = create_shadowmap_rt(4096, 4096),
 	}
 
-	g_mem.shadow_map = create_shadowmap_rt(4096, 4096)
+	set_shader_location :: proc(s: ^rl.Shader, #any_int index: i32, name: cstring) {
+		s.locs[index] = rl.GetShaderLocation(s^, name)
+	}
 
-	
-	g_mem.default_shader.locs[rl.ShaderLocationIndex.VECTOR_VIEW] = rl.GetShaderLocation(g_mem.default_shader, "viewPos")
-    g_mem.default_shader.locs[rl.ShaderLocationIndex.MATRIX_MVP] = rl.GetShaderLocation(g_mem.default_shader, "mvp")
-	g_mem.default_shader.locs[rl.ShaderLocationIndex.MATRIX_MODEL] = rl.GetShaderLocationAttrib(g_mem.default_shader, "instanceTransform")
-	g_mem.default_shader.locs[int(rl.ShaderLocationIndex.MAP_ALBEDO) + 10] = rl.GetShaderLocation(g_mem.default_shader, "shadowMap")
+	set_shader_attrib_location :: proc(s: ^rl.Shader, #any_int index: i32, name: cstring) {
+		s.locs[index] = rl.GetShaderLocationAttrib(s^, name)
+	}
 
-    g_mem.shadowcaster_shader.locs[rl.ShaderLocationIndex.MATRIX_MVP] = rl.GetShaderLocation(g_mem.shadowcaster_shader, "mvp")
-	g_mem.shadowcaster_shader.locs[rl.ShaderLocationIndex.MATRIX_MODEL] = rl.GetShaderLocationAttrib(g_mem.shadowcaster_shader, "instanceTransform")
+	set_shader_location(&g_mem.default_shader, rl.ShaderLocationIndex.VECTOR_VIEW, "viewPos")
+	set_shader_location(&g_mem.default_shader, rl.ShaderLocationIndex.MATRIX_MVP, "mvp")
+	set_shader_location(&g_mem.default_shader, i32(rl.ShaderLocationIndex.MAP_ALBEDO) + 10, "shadowMap")
 
-	g_mem.instanced_lighting_mat = rl.LoadMaterialDefault()
-	g_mem.instanced_lighting_mat.shader = g_mem.default_shader
-	g_mem.instanced_lighting_mat.maps[10].texture = g_mem.shadow_map.depth
+	set_shader_location(&g_mem.default_shader_instanced, rl.ShaderLocationIndex.VECTOR_VIEW, "viewPos")
+	set_shader_location(&g_mem.default_shader_instanced, rl.ShaderLocationIndex.MATRIX_MVP, "mvp")
+	set_shader_attrib_location(&g_mem.default_shader_instanced, rl.ShaderLocationIndex.MATRIX_MODEL, "instanceTransform")
+	set_shader_location(&g_mem.default_shader_instanced, i32(rl.ShaderLocationIndex.MAP_ALBEDO) + 10, "shadowMap")
 
-	g_mem.shadowcaster_mat = rl.LoadMaterialDefault()
-	g_mem.shadowcaster_mat.shader = g_mem.shadowcaster_shader
+	set_shader_location(&g_mem.shadowcasting_shader, rl.ShaderLocationIndex.MATRIX_MVP, "mvp")
+
+	set_shader_location(&g_mem.shadowcasting_shader_instanced, rl.ShaderLocationIndex.MATRIX_MVP, "mvp")
+	set_shader_attrib_location(&g_mem.shadowcasting_shader_instanced, rl.ShaderLocationIndex.MATRIX_MODEL, "instanceTransform")
+
+	g_mem.default_mat = rl.LoadMaterialDefault()
+	g_mem.default_mat.shader = g_mem.default_shader
+	g_mem.default_mat.maps[10].texture = g_mem.shadow_map.depth
+
+	g_mem.default_mat_instanced = rl.LoadMaterialDefault()
+	g_mem.default_mat_instanced.shader = g_mem.default_shader_instanced
+	g_mem.default_mat_instanced.maps[10].texture = g_mem.shadow_map.depth
+
+	g_mem.shadowcasting_mat = rl.LoadMaterialDefault()
+	g_mem.shadowcasting_mat.shader = g_mem.shadowcasting_shader
+
+	g_mem.shadowcasting_mat_instanced = rl.LoadMaterialDefault()
+	g_mem.shadowcasting_mat_instanced.shader = g_mem.shadowcasting_shader_instanced
 
 	g_mem.shadowcaster_mat_squirrel = rl.LoadMaterialDefault()
-	g_mem.shadowcaster_mat_squirrel.shader = g_mem.shadowcaster_shader
+	g_mem.shadowcaster_mat_squirrel.shader = g_mem.default_shader
 	g_mem.shadowcaster_mat_squirrel.maps[0].texture = g_mem.squirrel
 
 	g_mem.squirrel_mat = rl.LoadMaterialDefault()
@@ -561,6 +583,8 @@ game_init :: proc() {
 
 	ambient := Vec4{ 0.2, 0.2, 0.3, 1.0}
 	rl.SetShaderValue(g_mem.default_shader, rl.GetShaderLocation(g_mem.default_shader, "ambient"), raw_data(&ambient), .VEC4)
+
+	rl.SetShaderValue(g_mem.default_shader_instanced, rl.GetShaderLocation(g_mem.default_shader_instanced, "ambient"), raw_data(&ambient), .VEC4)
 
 	for midx in 0..<g_mem.teapot.materialCount {
 		g_mem.teapot.materials[midx].shader = g_mem.default_shader
@@ -651,6 +675,11 @@ set_light :: proc(n: int, enabled: bool, pos: Vec3, color: Vec4, directional: bo
 	rl.SetShaderValue(g_mem.default_shader, rl.GetShaderLocation(g_mem.default_shader, fmt.ctprintf("lights[%v].type", n)), &type, .INT)
 	rl.SetShaderValue(g_mem.default_shader, rl.GetShaderLocation(g_mem.default_shader, fmt.ctprintf("lights[%v].position", n)), raw_data(&pos), .VEC3)
 	rl.SetShaderValue(g_mem.default_shader, rl.GetShaderLocation(g_mem.default_shader, fmt.ctprintf("lights[%v].color", n)), raw_data(&color), .VEC4)
+
+	rl.SetShaderValue(g_mem.default_shader_instanced, rl.GetShaderLocation(g_mem.default_shader_instanced, fmt.ctprintf("lights[%v].enabled", n)), &enabled, .INT)
+	rl.SetShaderValue(g_mem.default_shader_instanced, rl.GetShaderLocation(g_mem.default_shader_instanced, fmt.ctprintf("lights[%v].type", n)), &type, .INT)
+	rl.SetShaderValue(g_mem.default_shader_instanced, rl.GetShaderLocation(g_mem.default_shader_instanced, fmt.ctprintf("lights[%v].position", n)), raw_data(&pos), .VEC3)
+	rl.SetShaderValue(g_mem.default_shader_instanced, rl.GetShaderLocation(g_mem.default_shader_instanced, fmt.ctprintf("lights[%v].color", n)), raw_data(&color), .VEC4)
 }
 
 @(export)
