@@ -75,8 +75,7 @@ Game_Memory :: struct {
 	player_grounded: bool,
 	climb_points: [dynamic]Climb_Point,
 
-	squirrel: rl.Texture2D,
-	cat: rl.Texture2D,
+	atlas: rl.Texture2D,
 	plane_mesh: rl.Mesh,
 	plane: rl.Model,
 
@@ -111,6 +110,10 @@ player_eye_pos :: proc() -> Vec3 {
 dt: f32
 
 update :: proc() {
+	/*fmt.println("albedo", i32(rg.ShaderLocationIndex.MAP_ALBEDO))
+	fmt.println("diffuse", i32(rg.ShaderLocationIndex.MAP_))
+	fmt.println("metalness", i32(rg.ShaderLocationIndex.MAP_METALNESS))*/
+
 	//light_pos = {200*f32(math.cos(rl.GetTime())), 200, -200*f32(math.sin(rl.GetTime()))}
 
 	set_light(0, true, light_pos, { 1,1,1, 1 }, true)
@@ -328,7 +331,8 @@ draw_world :: proc(shadowcaster: bool) {
 
 		mat := shadowcaster ? g_mem.shadowcasting_mat_instanced : g_mem.default_mat_instanced
 
-		rl.DrawMeshInstanced(g_mem.box.meshes[0], mat, raw_data(box_transforms), i32(len(box_transforms)))
+		draw_mesh_instanced(g_mem.box.meshes[0], mat, box_transforms[:])
+		//rl.DrawMeshInstanced(g_mem.box.meshes[0], mat, raw_data(box_transforms), i32(len(box_transforms)))
 	}
 
 	draw_billboard :: proc(pos: Vec3, texture: rl.Texture2D,  shadowcaster: bool) {
@@ -347,8 +351,8 @@ draw_world :: proc(shadowcaster: bool) {
 	}
 
 	rg.DisableBackfaceCulling()
-	draw_billboard({0, 0.43, -5}, g_mem.squirrel, shadowcaster)
-	draw_billboard({2, 0.5, -5}, g_mem.cat, shadowcaster)
+	draw_billboard({0, 0.43, -5}, g_mem.atlas, shadowcaster)
+	draw_billboard({2, 0.5, -5}, g_mem.atlas, shadowcaster)
 	rg.EnableBackfaceCulling()
 }
 
@@ -509,6 +513,233 @@ bounding_box_overlap :: proc(b1: rl.BoundingBox, b2: rl.BoundingBox) -> (res: rl
 
 light_pos := Vec3{20, 20, -20}
 
+
+// Draw multiple mesh instances with material and different transforms
+draw_mesh_instanced :: proc(mesh: rl.Mesh, material: rl.Material, transforms: []rl.Matrix) {
+    // Bind shader program
+    rg.EnableShader(material.shader.id)
+
+    // Send required data to shader (matrices, values)
+    //-----------------------------------------------------
+    // Upload to shader material.colDiffuse
+    if material.shader.locs[rg.ShaderLocationIndex.COLOR_DIFFUSE] != -1 {
+        values := [4]f32 {
+            f32(material.maps[rl.MaterialMapIndex.ALBEDO].color.r)/255,
+            f32(material.maps[rl.MaterialMapIndex.ALBEDO].color.g)/255,
+            f32(material.maps[rl.MaterialMapIndex.ALBEDO].color.b)/255,
+            f32(material.maps[rl.MaterialMapIndex.ALBEDO].color.a)/255,
+        }
+
+        rg.SetUniform(material.shader.locs[rg.ShaderLocationIndex.COLOR_DIFFUSE], raw_data(&values), i32(rg.ShaderUniformDataType.VEC4), 1)
+    }
+
+    // Upload to shader material.colSpecular (if location available)
+    if material.shader.locs[rg.ShaderLocationIndex.COLOR_SPECULAR] != -1 {
+        values := [4]f32 {
+            f32(material.maps[rl.ShaderLocationIndex.COLOR_SPECULAR].color.r)/255,
+            f32(material.maps[rl.ShaderLocationIndex.COLOR_SPECULAR].color.g)/255,
+            f32(material.maps[rl.ShaderLocationIndex.COLOR_SPECULAR].color.b)/255,
+            f32(material.maps[rl.ShaderLocationIndex.COLOR_SPECULAR].color.a)/255,
+        }
+
+        rg.SetUniform(material.shader.locs[rg.ShaderLocationIndex.COLOR_SPECULAR], raw_data(&values), i32(rl.ShaderUniformDataType.VEC4), 1)
+    }
+
+    // Get a copy of current matrices to work with,
+    // just in case stereo render is required, and we need to modify them
+    // NOTE: At this point the modelview matrix just contains the view matrix (camera)
+    // That's because BeginMode3D() sets it and there is no model-drawing function
+    // that modifies it, all use rlPushMatrix() and rlPopMatrix()
+    matView := rg.GetMatrixModelview()
+    matModelView := rl.Matrix(1)
+    matProjection := rg.GetMatrixProjection()
+
+    // Upload view and projection matrices (if locations available)
+    if (material.shader.locs[rg.ShaderLocationIndex.MATRIX_VIEW] != -1) {
+    	rg.SetUniformMatrix(material.shader.locs[rg.ShaderLocationIndex.MATRIX_VIEW], matView)
+    }
+
+    if (material.shader.locs[rg.ShaderLocationIndex.MATRIX_PROJECTION] != -1) {
+    	rg.SetUniformMatrix(material.shader.locs[rg.ShaderLocationIndex.MATRIX_PROJECTION], matProjection)
+    }
+
+    // Create instances buffer
+    instanceTransforms := make([][16]f32, len(transforms), context.temp_allocator)
+
+    // Fill buffer with instances transformations as float16 arrays
+    for t, i in transforms {
+    	instanceTransforms[i] = rl.MatrixToFloatV(t)
+    }
+
+    // Enable mesh VAO to attach new buffer
+    rg.EnableVertexArray(mesh.vaoId)
+
+    // This could alternatively use a static VBO and either glMapBuffer() or glBufferSubData().
+    // It isn't clear which would be reliably faster in all cases and on all platforms,
+    // anecdotally glMapBuffer() seems very slow (syncs) while glBufferSubData() seems
+    // no faster, since we're transferring all the transform matrices anyway
+    instancesVboId := rg.LoadVertexBuffer(raw_data(instanceTransforms), i32(len(transforms)*size_of([16]f32)), false)
+
+    // Instances transformation matrices are send to shader attribute location: SHADER_LOC_MATRIX_MODEL
+    for ii in 0..<4 {
+    	i := u32(ii)
+        rg.EnableVertexAttribute(u32(material.shader.locs[rg.ShaderLocationIndex.MATRIX_MODEL]) + i)
+        rg.SetVertexAttribute(u32(material.shader.locs[rg.ShaderLocationIndex.MATRIX_MODEL]) + i, 4, rg.FLOAT, false, size_of(rl.Matrix), transmute(rawptr)(uintptr(i*size_of([4]f32))))
+        rg.SetVertexAttributeDivisor(u32(material.shader.locs[rg.ShaderLocationIndex.MATRIX_MODEL]) + i, 1)
+    }
+
+    rg.DisableVertexBuffer()
+    rg.DisableVertexArray()
+
+    // Accumulate internal matrix transform (push/pop) and view matrix
+    // NOTE: In this case, model instance transformation must be computed in the shader
+    matModelView = matView * rg.GetMatrixTransform()//rl.MatrixMultiply(rg.GetMatrixTransform(), matView)
+
+    // Upload model normal matrix (if locations available)
+    if (material.shader.locs[rg.ShaderLocationIndex.MATRIX_NORMAL] != -1) {
+    	rg.SetUniformMatrix(material.shader.locs[rg.ShaderLocationIndex.MATRIX_NORMAL], rl.Matrix(1))
+    }
+
+    //-----------------------------------------------------
+
+    // Bind active texture maps (if available)
+    
+    // copied from rconfig.h
+    MAX_MATERIAL_MAPS :: 12
+
+    for ii in 0..<MAX_MATERIAL_MAPS {
+    	i := i32(ii)
+    	mi := rl.MaterialMapIndex(i)
+        if (material.maps[i].texture.id > 0) {
+            // Select current shader texture slot
+            rg.ActiveTextureSlot(i)
+
+            // Enable texture for active slot
+            if mi == rl.MaterialMapIndex.IRRADIANCE || mi == rl.MaterialMapIndex.PREFILTER || mi == rl.MaterialMapIndex.CUBEMAP {
+            	rg.EnableTextureCubemap(material.maps[i].texture.id)
+            } else {
+            	rg.EnableTexture(material.maps[i].texture.id)
+            }
+
+            rg.SetUniform(material.shader.locs[i32(rg.ShaderLocationIndex.MAP_ALBEDO) + i], &i, i32(rg.ShaderUniformDataType.INT), 1)
+        }
+    }
+
+    rg.EnableVertexArray(mesh.vaoId)
+
+    /*// Try binding vertex array objects (VAO)
+    // or use VBOs if not possible
+    if (!rg.EnableVertexArray(mesh.vaoId))
+    {
+        // Bind mesh VBO data: vertex position (shader-location = 0)
+        rg.EnableVertexBuffer(mesh.vboId[0])
+        rg.SetVertexAttribute(u32(material.shader.locs[rg.ShaderLocationIndex.VERTEX_POSITION]), 3, rg.FLOAT, false, 0, nil)
+        rg.EnableVertexAttribute(u32(material.shader.locs[rg.ShaderLocationIndex.VERTEX_POSITION]))
+
+        // Bind mesh VBO data: vertex texcoords (shader-location = 1)
+        rg.EnableVertexBuffer(mesh.vboId[1])
+        rg.SetVertexAttribute(u32(material.shader.locs[rg.ShaderLocationIndex.VERTEX_TEXCOORD01]), 2, rg.FLOAT, false, 0, nil)
+        rg.EnableVertexAttribute(u32(material.shader.locs[rg.ShaderLocationIndex.VERTEX_TEXCOORD01]))
+
+        if (material.shader.locs[rg.ShaderLocationIndex.VERTEX_NORMAL] != -1)
+        {
+            // Bind mesh VBO data: vertex normals (shader-location = 2)
+            rg.EnableVertexBuffer(mesh.vboId[2])
+            rg.SetVertexAttribute(material.shader.locs[rg.ShaderLocationIndex.VERTEX_NORMAL], 3, RL_FLOAT, 0, 0, 0)
+            rg.EnableVertexAttribute(material.shader.locs[rg.ShaderLocationIndex.VERTEX_NORMAL])
+        }
+
+        // Bind mesh VBO data: vertex colors (shader-location = 3, if available)
+        if (material.shader.locs[SHADER_LOC_VERTEX_COLOR] != -1)
+        {
+            if (mesh.vboId[3] != 0)
+            {
+                rg.EnableVertexBuffer(mesh.vboId[3])
+                rg.SetVertexAttribute(material.shader.locs[SHADER_LOC_VERTEX_COLOR], 4, RL_UNSIGNED_BYTE, 1, 0, 0)
+                rg.EnableVertexAttribute(material.shader.locs[SHADER_LOC_VERTEX_COLOR])
+            }
+            else
+            {
+                // Set default value for unused attribute
+                // NOTE: Required when using default shader and no VAO support
+                value := [4]f32 { 1, 1, 1, 1 }
+                rg.SetVertexAttributeDefault(material.shader.locs[SHADER_LOC_VERTEX_COLOR], value, SHADER_ATTRIB_VEC4, 4)
+                rg.DisableVertexAttribute(material.shader.locs[SHADER_LOC_VERTEX_COLOR])
+            }
+        }
+
+        // Bind mesh VBO data: vertex tangents (shader-location = 4, if available)
+        if (material.shader.locs[SHADER_LOC_VERTEX_TANGENT] != -1)
+        {
+            rg.EnableVertexBuffer(mesh.vboId[4])
+            rg.SetVertexAttribute(material.shader.locs[SHADER_LOC_VERTEX_TANGENT], 4, RL_FLOAT, 0, 0, 0)
+            rg.EnableVertexAttribute(material.shader.locs[SHADER_LOC_VERTEX_TANGENT])
+        }
+
+        // Bind mesh VBO data: vertex texcoords2 (shader-location = 5, if available)
+        if (material.shader.locs[SHADER_LOC_VERTEX_TEXCOORD02] != -1)
+        {
+            rg.EnableVertexBuffer(mesh.vboId[5])
+            rg.SetVertexAttribute(material.shader.locs[SHADER_LOC_VERTEX_TEXCOORD02], 2, RL_FLOAT, 0, 0, 0)
+            rg.EnableVertexAttribute(material.shader.locs[SHADER_LOC_VERTEX_TEXCOORD02])
+        }
+
+        if (mesh.indices != NULL) {
+        	rg.EnableVertexBufferElement(mesh.vboId[6])
+        }
+    }
+
+    // WARNING: Disable vertex attribute color input if mesh can not provide that data (despite location being enabled in shader)
+    if mesh.vboId[3] == 0 {
+    	rg.DisableVertexAttribute(u32(material.shader.locs[rg.ShaderLocationIndex.VERTEX_COLOR]))
+    }*/
+
+    {
+        // Calculate model-view-projection matrix (MVP)
+        matModelViewProjection := matProjection * matModelView// rl.MatrixMultiply(matModelView, matProjection)
+
+        // Send combined model-view-projection matrix to shader
+        rg.SetUniformMatrix(material.shader.locs[rl.ShaderLocationIndex.MATRIX_MVP], matModelViewProjection)
+
+        // Draw mesh instanced
+        if (mesh.indices != nil) {
+        	rg.DrawVertexArrayElementsInstanced(0, mesh.triangleCount*3, nil, i32(len(transforms)))
+        } else {
+        	rg.DrawVertexArrayInstanced(0, mesh.vertexCount, i32(len(transforms)))
+        }
+    }
+
+    // Unbind all bound texture maps
+    for ii in 0..<MAX_MATERIAL_MAPS {
+    	i := i32(ii)
+    	mi := rl.MaterialMapIndex(i)
+        if (material.maps[i].texture.id > 0)
+        {
+            // Select current shader texture slot
+            rg.ActiveTextureSlot(i)
+
+            // Disable texture for active slot
+            if ((mi == rl.MaterialMapIndex.IRRADIANCE) || (mi == rl.MaterialMapIndex.PREFILTER) || (mi == rl.MaterialMapIndex.CUBEMAP)) {
+            	rg.DisableTextureCubemap()
+            } else {
+            	rg.DisableTexture()
+            }
+        }
+    }
+
+    // Disable all possible vertex array objects (or VBOs)
+   	rg.DisableVertexArray()
+   	rg.DisableVertexBuffer()
+   	rg.DisableVertexBufferElement()
+
+    // Disable shader program
+   	rg.DisableShader()
+
+    // Remove instance transforms buffer
+    rg.UnloadVertexBuffer(instancesVboId)
+}
+
+
 @(export)
 game_init :: proc() {
 	g_mem = new(Game_Memory)
@@ -522,8 +753,7 @@ game_init :: proc() {
 		skybox_shader = rl.LoadShader("skybox.vs", "skybox.fs"),
 		teapot = rl.LoadModel("teapot.obj"),
 		box = rl.LoadModel("box.obj"),
-		squirrel = rl.LoadTexture("squirrel.png"),
-		cat = rl.LoadTexture("cat.png"),
+		atlas = rl.LoadTexture("atlas.png"),
 		plane_mesh = rl.GenMeshPlane(1, 1, 2, 2),
     	cube = rl.GenMeshCube(1, 1, 1),
     	shadow_map = create_shadowmap_rt(4096, 4096),
@@ -567,7 +797,7 @@ game_init :: proc() {
 
 	g_mem.shadowcaster_mat_squirrel = rl.LoadMaterialDefault()
 	g_mem.shadowcaster_mat_squirrel.shader = g_mem.default_shader
-	g_mem.shadowcaster_mat_squirrel.maps[0].texture = g_mem.squirrel
+	g_mem.shadowcaster_mat_squirrel.maps[0].texture = g_mem.atlas
 
 	g_mem.squirrel_mat = rl.LoadMaterialDefault()
 	g_mem.squirrel_mat.shader = g_mem.default_shader
@@ -578,7 +808,7 @@ game_init :: proc() {
 		g_mem.plane.materials[midx].shader = g_mem.default_shader
 	}
 
-	g_mem.squirrel_mat.maps[0].texture = g_mem.squirrel
+	g_mem.squirrel_mat.maps[0].texture = g_mem.atlas
 	g_mem.squirrel_mat.maps[10].texture = g_mem.shadow_map.depth
 
 	ambient := Vec4{ 0.2, 0.2, 0.3, 1.0}

@@ -1,5 +1,21 @@
 @echo off
 
+if "%1"=="skip_atlas_builder" goto skip_atlas_builder
+
+odin build atlas_builder -use-separate-modules -define:RAYLIB_SHARED=true
+IF %ERRORLEVEL% NEQ 0 exit /b 1
+
+rem atlas_builder.exe
+IF %ERRORLEVEL% NEQ 0 exit /b 1
+
+rem :skip_atlas_builder
+
+rem odin build file_version_builder -use-separate-modules -define:RAYLIB_SHARED=true
+rem IF %ERRORLEVEL% NEQ 0 exit /b 1
+
+rem file_version_builder.exe
+rem IF %ERRORLEVEL% NEQ 0 exit /b 1
+
 rem Build game.dll
 odin build . -show-timings -use-separate-modules -define:RAYLIB_SHARED=true -build-mode:dll -out:game.dll -strict-style -vet-unused -vet-using-stmt -vet-using-param -vet-style -vet-semicolon -debug
 IF %ERRORLEVEL% NEQ 0 exit /b 1
