@@ -358,8 +358,6 @@ draw_world :: proc(shadowcaster: bool) {
 		draw_mesh_instanced(g_mem.box_mesh, mat, box_transforms[:], atlas_rects[:])
 	}
 
-	rl.DrawSphere({0, 1, 0}, 0.1, rl.GREEN)
-
 	if shadowcaster {
 		rg.DisableBackfaceCulling()
 	}
@@ -420,11 +418,10 @@ draw :: proc(fs: Frame_State) {
 
 	// Shadowmap done. Draw normally and use shadows!
 
-	light_vp_loc := rl.GetShaderLocation(g_mem.default_shader, "lightVP")
 	light_view_proj := light_proj * light_view
 
-	rl.SetShaderValueMatrix(g_mem.default_shader, light_vp_loc, light_view_proj)
-	rl.SetShaderValueMatrix(g_mem.default_shader_instanced, light_vp_loc, light_view_proj)
+	rl.SetShaderValueMatrix(g_mem.default_shader, rl.GetShaderLocation(g_mem.default_shader, "light_vp"), light_view_proj)
+	rl.SetShaderValueMatrix(g_mem.default_shader_instanced, rl.GetShaderLocation(g_mem.default_shader_instanced, "light_vp"), light_view_proj)
 
 	rl.ClearBackground(rl.BLACK)
 
@@ -751,13 +748,11 @@ Shader :: struct {
 		s.locs[index] = rl.GetShaderLocation(s^, name)
 	}
 
-	set_shader_location(&g_mem.default_shader, rl.ShaderLocationIndex.MATRIX_VIEW, "matView")
-	set_shader_location(&g_mem.default_shader, rl.ShaderLocationIndex.VECTOR_VIEW, "viewPos")
-	set_shader_location(&g_mem.default_shader, i32(rl.ShaderLocationIndex.MAP_ALBEDO) + 10, "shadowMap")
+	set_shader_location(&g_mem.default_shader, rl.ShaderLocationIndex.VECTOR_VIEW, "view_pos")
+	set_shader_location(&g_mem.default_shader, i32(rl.ShaderLocationIndex.MAP_ALBEDO) + 10, "shadow_map")
 
-	set_shader_location(&g_mem.default_shader_instanced, rl.ShaderLocationIndex.VECTOR_VIEW, "viewPos")
-	set_shader_location(&g_mem.default_shader_instanced, rl.ShaderLocationIndex.MATRIX_VIEW, "matView")
-	set_shader_location(&g_mem.default_shader_instanced, i32(rl.ShaderLocationIndex.MAP_ALBEDO) + 10, "shadowMap")
+	set_shader_location(&g_mem.default_shader_instanced, rl.ShaderLocationIndex.VECTOR_VIEW, "view_pos")
+	set_shader_location(&g_mem.default_shader_instanced, i32(rl.ShaderLocationIndex.MAP_ALBEDO) + 10, "shadow_map")
 
 	g_mem.default_mat = rl.LoadMaterialDefault()
 	g_mem.default_mat.shader = g_mem.default_shader

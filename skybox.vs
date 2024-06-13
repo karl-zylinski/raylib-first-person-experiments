@@ -1,34 +1,15 @@
 #version 330
 
-// Input vertex attributes
-in vec3 vertexPosition;
-in vec2 vertexTexCoord;
-in vec3 vertexNormal;
-in vec4 vertexColor;
+layout(location=0) in vec3 vertex_position;
 
-// Input uniform values
 uniform mat4 mvp;
-uniform mat4 matModel;
-uniform mat4 matNormal;
-uniform mat4 matProjection;
-uniform mat4 matView;
 
-// Output vertex attributes (to fragment shader)
-out vec3 fragPosition;
-out vec2 fragTexCoord;
-out vec4 fragColor;
-out vec3 fragNormal;
+out vec3 frag_world_pos;
 
-// NOTE: Add here your custom variables
-
-void main()
-{
-    // Send vertex attributes to fragment shader
-    fragPosition = vertexPosition;
-    fragTexCoord = vertexTexCoord;
-    fragColor = vertexColor;
-    fragNormal = vertexNormal;
-
-    // Calculate final vertex position
-    gl_Position = mvp*vec4(vertexPosition, 1.0);
+void main() {
+    // TODO: This probably needs to be untranslated from player_pos and be sent
+    // down to frag shader as some kind of local space coord. Frag shader just uses it
+    // for direction where it assumes box is at origin.
+    frag_world_pos = vertex_position;
+    gl_Position = mvp*vec4(vertex_position, 1.0);
 }

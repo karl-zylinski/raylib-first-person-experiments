@@ -1,15 +1,14 @@
 #version 330
 
-in vec3 vertexPosition;
-in vec2 vertexTexCoord;
+layout(location=0) in vec3 vertex_position;
+layout(location=1) in vec2 vertex_texcoord;
 
-in mat4 instanceTransform;
 uniform mat4 mvp;
 
-out vec2 fragTexCoord;
+out vec2 frag_texcoord;
 
 void main()
 {
-	fragTexCoord = vertexTexCoord;
-	gl_Position = mvp*vec4(vertexPosition, 1.0);
+	frag_texcoord = vertex_texcoord;
+	gl_Position = mvp*vec4(vertex_position, 1.0);
 }

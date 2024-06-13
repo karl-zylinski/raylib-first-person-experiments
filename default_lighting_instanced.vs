@@ -4,21 +4,17 @@
 layout(location=0) in vec3 vertex_position;
 layout(location=1) in vec2 vertex_texcoord;
 layout(location=2) in vec3 vertex_normal;
-//layout(location=3) in vec4 vertexColor;
 
 layout(location=6) in mat4 instance_transform;
 layout(location=10)in vec4 instance_uv_remap;
 
 // Input uniform values
 uniform mat4 mvp;
-uniform mat4 matView;
-uniform mat4 matNormal;
 
 // Output vertex attributes (to fragment shader)
-out vec3 fragPosition;
-out vec2 fragTexCoord;
-out vec4 fragColor;
-out vec3 fragNormal;
+out vec3 frag_world_pos;
+out vec2 frag_texcoord;
+out vec3 frag_normal;
 
 // NOTE: Add here your custom variables
 
@@ -34,14 +30,13 @@ float remap(float old_value, float old_min, float old_max, float new_min, float 
 void main()
 {
     // Send vertex attributes to fragment shader
-    fragPosition = vec3(instance_transform*vec4(vertex_position, 1.0));
-    fragTexCoord.x = remap(vertex_texcoord.x, 0, 1, instance_uv_remap.x, instance_uv_remap.y);
-    fragTexCoord.y = remap(vertex_texcoord.y, 0, 1, instance_uv_remap.z, instance_uv_remap.w);
+    frag_world_pos = vec3(instance_transform*vec4(vertex_position, 1.0));
+    frag_texcoord.x = remap(vertex_texcoord.x, 0, 1, instance_uv_remap.x, instance_uv_remap.y);
+    frag_texcoord.y = remap(vertex_texcoord.y, 0, 1, instance_uv_remap.z, instance_uv_remap.w);
 
-    mat4 mn = transpose(inverse(instance_transform));
+    mat4 normal_matrix = transpose(inverse(instance_transform));
 
-    //fragColor = vertexColor;
-    fragNormal = normalize(vec3(mn*vec4(vertex_normal, 1.0)));
+    frag_normal = normalize(vec3(normal_matrix*vec4(vertex_normal, 1.0)));
 
     // Calculate final vertex position
     gl_Position = mvp*instance_transform*vec4(vertex_position, 1.0);
