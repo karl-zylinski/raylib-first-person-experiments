@@ -102,7 +102,15 @@ player_set_state :: proc(state: Player_State) {
 	g_mem.player.state = state
 }
 
-update :: proc() {
+Frame_State :: struct {
+	crosshair_color: rl.Color,
+}
+
+update :: proc() -> Frame_State {
+	fs := Frame_State {
+		crosshair_color = rl.GRAY,
+	}
+
 	// Rotate light
 	// light_pos = {20*f32(math.cos(rl.GetTime())), 20, -20*f32(math.sin(rl.GetTime()))}
 	set_light(0, true, light_pos, { 1, 1, 1, 1 }, true)
@@ -237,6 +245,28 @@ update :: proc() {
 			p.vel.y = 5
 		}
 	}
+
+	screen_mid := Vec2{f32(rl.GetScreenWidth()), f32(rl.GetScreenHeight())}*0.5
+	cam := game_camera()
+	mouse_ray := rl.GetMouseRay(screen_mid, cam)
+
+	for c in g_mem.climb_points {
+		if coll := rl.GetRayCollisionSphere(mouse_ray, c.pos, 0.1); coll.hit && coll.distance < 1.5 {
+			fs.crosshair_color = rl.GREEN
+
+			if rl.IsKeyPressed(.E) && union_type(g_mem.player.state) == Player_State_Default {
+				player_set_state(Player_State_Climb_Start {
+					point = c,
+					start = g_mem.player.pos,
+					start_pitch = g_mem.player.pitch,
+					start_yaw = g_mem.player.yaw,
+				})
+				break
+			}
+		}
+	}
+
+	return fs
 }
 
 draw_skybox :: proc() {
@@ -365,7 +395,7 @@ draw_world :: proc(shadowcaster: bool) {
 	}
 }
 
-draw :: proc() {
+draw :: proc(fs: Frame_State) {
 	rl.BeginDrawing()
 
 	// Draw into shadowmap
@@ -407,33 +437,17 @@ draw :: proc() {
 
 	draw_world(false)
 
-	screen_mid := Vec2{f32(rl.GetScreenWidth()), f32(rl.GetScreenHeight())}*0.5
-	r := rl.GetMouseRay(screen_mid, cam)
-
-	crosshair_color := rl.GRAY
 	for c in g_mem.climb_points {
 		rl.DrawSphere(c.pos, 0.1, rl.RED)
-
-		if coll := rl.GetRayCollisionSphere(r, c.pos, 0.1); coll.hit && coll.distance < 1.5 {
-			crosshair_color = rl.GREEN
-
-			if rl.IsKeyPressed(.E) && union_type(g_mem.player.state) == Player_State_Default {
-				player_set_state(Player_State_Climb_Start {
-					point = c,
-					start = g_mem.player.pos,
-					start_pitch = g_mem.player.pitch,
-					start_yaw = g_mem.player.yaw,
-				})
-				break
-			}
-		}
 	}
 		
 	rl.EndMode3D()
 
-	rl.DrawCircleV(screen_mid, 5, crosshair_color)
+	screen_mid := Vec2{f32(rl.GetScreenWidth()), f32(rl.GetScreenHeight())}*0.5
+	rl.DrawCircleV(screen_mid, 5, fs.crosshair_color)
 
 	if g_mem.debug_draw {
+
 		rl.DrawTextureEx(g_mem.shadow_map.depth, {}, 0, 0.1, rl.WHITE)
 	}
 
@@ -446,8 +460,8 @@ game_update :: proc() -> bool {
 		g_mem.debug_draw = !g_mem.debug_draw
 	}
 
-	update()
-	draw()
+	frame_state := update()
+	draw(frame_state)
 	return !rl.WindowShouldClose()
 }
 
