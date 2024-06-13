@@ -44,14 +44,19 @@ Player_State :: union #no_nil {
 	Player_State_Climb_End,
 }
 
-Game_Memory :: struct {	
-	player_pos: Vec3,
-	player_vel: Vec3,
-	player_state: Player_State,
+Player :: struct {
+	pos: Vec3,
+	vel: Vec3,
+	state: Player_State,
 	state_start: f64,
-	time: f64,
+
 	yaw: f32,
 	pitch: f32,
+}
+
+Game_Memory :: struct {
+	player: Player,
+	time: f64,
 	default_shader: rl.Shader,
 	default_shader_instanced: rl.Shader,
 	shadowcasting_shader: rl.Shader,
@@ -81,13 +86,13 @@ PLAYER_SIZE :: Vec3 { 0.3, 1, 0.3 }
 
 player_bounding_box :: proc() -> rl.BoundingBox {
 	return {
-		min = g_mem.player_pos - PLAYER_SIZE*0.5,
-		max = g_mem.player_pos + PLAYER_SIZE*0.5,
+		min = g_mem.player.pos - PLAYER_SIZE*0.5,
+		max = g_mem.player.pos + PLAYER_SIZE*0.5,
 	}
 }
 
 player_eye_pos :: proc() -> Vec3 {
-	return g_mem.player_pos + {0, PLAYER_SIZE.y/4, 0}
+	return g_mem.player.pos + {0, PLAYER_SIZE.y/4, 0}
 }
 
 dt: f32
@@ -99,7 +104,8 @@ update :: proc() {
 	dt = min(rl.GetFrameTime(), 0.033)
 	g_mem.time += f64(dt)
 
-	switch &s in g_mem.player_state {
+	p := &g_mem.player
+	switch &s in p.state {
 		case Player_State_Default:
 			if rl.IsWindowFocused() {
 				if rl.IsKeyPressed(.X) {
@@ -130,53 +136,53 @@ update :: proc() {
 					movement.x += 1
 				}
 
-				g_mem.yaw -= rl.GetMouseDelta().x * dt * 0.2
-				g_mem.pitch -= rl.GetMouseDelta().y * dt * 0.2
-				g_mem.pitch = clamp(g_mem.pitch, -0.24, 0.24)
-				r := linalg.matrix4_rotate(g_mem.yaw * math.TAU, Vec3{0, 1, 0})
-				g_mem.player_vel.xz = linalg.mul(r, vec4_point(movement)).xz * 3
+				p.yaw -= rl.GetMouseDelta().x * dt * 0.2
+				p.pitch -= rl.GetMouseDelta().y * dt * 0.2
+				p.pitch = clamp(p.pitch, -0.24, 0.24)
+				r := linalg.matrix4_rotate(p.yaw * math.TAU, Vec3{0, 1, 0})
+				p.vel.xz = linalg.mul(r, vec4_point(movement)).xz * 3
 			}
 
 		case Player_State_Climb_Start:
 			end_yaw := math.asin(s.point.wanted_facing.y)/math.TAU + 0.5
-			t := f32(remap(g_mem.time, g_mem.state_start, g_mem.state_start + 1, 0, 1))
-			g_mem.yaw = math.lerp(s.start_yaw, end_yaw, t)
-			g_mem.pitch = math.lerp(s.start_pitch, 0, t)
+			t := f32(remap(g_mem.time, p.state_start, p.state_start + 1, 0, 1))
+			p.yaw = math.lerp(s.start_yaw, end_yaw, t)
+			p.pitch = math.lerp(s.start_pitch, 0, t)
 
 			end_pos := s.start - s.point.wanted_facing
 
-			g_mem.player_pos = math.lerp(s.start, end_pos, t)
+			p.pos = math.lerp(s.start, end_pos, t)
 
 			if t >= 1 {
-				g_mem.player_state = Player_State_Climb_Down {
-					start = g_mem.player_pos,
-					end = g_mem.player_pos - {0, 4, 0},
+				p.state = Player_State_Climb_Down {
+					start = p.pos,
+					end = p.pos - {0, 4, 0},
 				}
-				g_mem.state_start = g_mem.time
+				p.state_start = g_mem.time
 			}
 
 		case Player_State_Climb_Down:
-			t := f32(remap(g_mem.time, g_mem.state_start, g_mem.state_start + 3, 0, 1))
-			g_mem.player_pos = math.lerp(s.start, s.end, t)
+			t := f32(remap(g_mem.time, p.state_start, p.state_start + 3, 0, 1))
+			p.pos = math.lerp(s.start, s.end, t)
 
 			if t >= 1 {
-				g_mem.player_state = Player_State_Climb_End {
-					start_yaw = g_mem.yaw,
+				p.state = Player_State_Climb_End {
+					start_yaw = p.yaw,
 				}
-				g_mem.state_start = g_mem.time
+				p.state_start = g_mem.time
 			}
 
 		case Player_State_Climb_End:
-			t := f32(remap(g_mem.time, g_mem.state_start, g_mem.state_start + 1, 0, 1))
-			g_mem.yaw = math.lerp(s.start_yaw, s.start_yaw + 0.5, t)
+			t := f32(remap(g_mem.time, p.state_start, p.state_start + 1, 0, 1))
+			p.yaw = math.lerp(s.start_yaw, s.start_yaw + 0.5, t)
 
 			if t >= 1 {
-				g_mem.player_state = Player_State_Default {}
+				p.state = Player_State_Default {}
 			}
 	}
 	
-	g_mem.player_vel.y -= dt * 9.82
-	g_mem.player_pos.y += g_mem.player_vel.y * dt
+	p.vel.y -= dt * 9.82
+	p.pos.y += p.vel.y * dt
 	grounded := false
 
 	for b in g_mem.boxes {
@@ -186,14 +192,14 @@ update :: proc() {
 		}
 
 		if obb, coll := bounding_box_overlap(player_bounding_box(), bb); coll {
-			sign: f32 = g_mem.player_pos.y + PLAYER_SIZE.y/2 < (b.pos.y + b.size.y / 2) ? -1 : 1
-			g_mem.player_pos.y += (obb.max.y - obb.min.y) * sign
-			g_mem.player_vel.y = 0
+			sign: f32 = p.pos.y + PLAYER_SIZE.y/2 < (b.pos.y + b.size.y / 2) ? -1 : 1
+			p.pos.y += (obb.max.y - obb.min.y) * sign
+			p.vel.y = 0
 			grounded = true
 		}
 	}
 
-	g_mem.player_pos.x += g_mem.player_vel.x * dt
+	p.pos.x += p.vel.x * dt
 
 	for b in g_mem.boxes {
 		bb := rl.BoundingBox {
@@ -202,13 +208,13 @@ update :: proc() {
 		}
 
 		if obb, coll := bounding_box_overlap(player_bounding_box(), bb); coll {
-			sign: f32 = g_mem.player_pos.x + PLAYER_SIZE.x/2 < (b.pos.x + b.size.x / 2) ? -1 : 1
-			g_mem.player_pos.x += (obb.max.x - obb.min.x) * sign
-			g_mem.player_vel.x = 0
+			sign: f32 = p.pos.x + PLAYER_SIZE.x/2 < (b.pos.x + b.size.x / 2) ? -1 : 1
+			p.pos.x += (obb.max.x - obb.min.x) * sign
+			p.vel.x = 0
 		}
 	}
 
-	g_mem.player_pos.z += g_mem.player_vel.z * rl.GetFrameTime()
+	p.pos.z += p.vel.z * rl.GetFrameTime()
 
 	for b in g_mem.boxes {
 		bb := rl.BoundingBox {
@@ -217,15 +223,15 @@ update :: proc() {
 		}
 
 		if obb, coll := bounding_box_overlap(player_bounding_box(), bb); coll {
-			sign: f32 = g_mem.player_pos.z + PLAYER_SIZE.z/2 < (b.pos.z + b.size.z / 2) ? -1 : 1
-			g_mem.player_pos.z += (obb.max.z - obb.min.z) * sign
-			g_mem.player_vel.z = 0
+			sign: f32 = p.pos.z + PLAYER_SIZE.z/2 < (b.pos.z + b.size.z / 2) ? -1 : 1
+			p.pos.z += (obb.max.z - obb.min.z) * sign
+			p.vel.z = 0
 		}
 	}
 
 	if grounded {
 		if rl.IsKeyPressed(.SPACE) {
-			g_mem.player_vel.y = 5
+			p.vel.y = 5
 		}
 	}
 }
@@ -236,7 +242,7 @@ draw_skybox :: proc() {
 	c := rl.RED
 
 	rg.PushMatrix()
-	m := rl.MatrixToFloatV(auto_cast linalg.matrix4_translate(g_mem.player_pos))
+	m := rl.MatrixToFloatV(auto_cast linalg.matrix4_translate(g_mem.player.pos))
 	rg.MultMatrixf(&m[0])
 	
 	rg.Begin(rg.TRIANGLES)
@@ -365,8 +371,8 @@ draw :: proc() {
 	rl.ClearBackground(rl.WHITE)
 
 	light_cam := rl.Camera3D {
-		position = light_pos + g_mem.player_pos,
-		target = g_mem.player_pos,
+		position = light_pos + g_mem.player.pos,
+		target = g_mem.player.pos,
 		up = {0, 1, 0},
 		fovy = 20,
 		projection = .ORTHOGRAPHIC,
@@ -393,8 +399,8 @@ draw :: proc() {
 	rl.BeginMode3D(cam)
 	draw_skybox()
 
-	rl.SetShaderValue(g_mem.default_shader, rl.ShaderLocationIndex(g_mem.default_shader.locs[rl.ShaderLocationIndex.VECTOR_VIEW]), raw_data(&g_mem.player_pos), .VEC3)
-	rl.SetShaderValue(g_mem.default_shader_instanced, rl.ShaderLocationIndex(g_mem.default_shader_instanced.locs[rl.ShaderLocationIndex.VECTOR_VIEW]), raw_data(&g_mem.player_pos), .VEC3)
+	rl.SetShaderValue(g_mem.default_shader, rl.ShaderLocationIndex(g_mem.default_shader.locs[rl.ShaderLocationIndex.VECTOR_VIEW]), raw_data(&g_mem.player.pos), .VEC3)
+	rl.SetShaderValue(g_mem.default_shader_instanced, rl.ShaderLocationIndex(g_mem.default_shader_instanced.locs[rl.ShaderLocationIndex.VECTOR_VIEW]), raw_data(&g_mem.player.pos), .VEC3)
 
 	draw_world(false)
 
@@ -408,14 +414,14 @@ draw :: proc() {
 		if coll := rl.GetRayCollisionSphere(r, c.pos, 0.1); coll.hit && coll.distance < 1.5 {
 			crosshair_color = rl.GREEN
 
-			if rl.IsKeyPressed(.E) && union_type(g_mem.player_state) == Player_State_Default {
-				g_mem.player_state = Player_State_Climb_Start {
+			if rl.IsKeyPressed(.E) && union_type(g_mem.player.state) == Player_State_Default {
+				g_mem.player.state = Player_State_Climb_Start {
 					point = c,
-					start = g_mem.player_pos,
-					start_pitch = g_mem.pitch,
-					start_yaw = g_mem.yaw,
+					start = g_mem.player.pos,
+					start_pitch = g_mem.player.pitch,
+					start_yaw = g_mem.player.yaw,
 				}
-				g_mem.state_start = g_mem.time
+				g_mem.player.state_start = g_mem.time
 				break
 			}
 		}
@@ -452,8 +458,8 @@ game_init_window :: proc() {
 }
 
 camera_rot_matrix :: proc() -> Mat4 {
-	camera_rot_x := linalg.matrix4_rotate(g_mem.pitch * math.TAU, Vec3{1, 0, 0})
-	camera_rot_y := linalg.matrix4_rotate(g_mem.yaw * math.TAU, Vec3{0, 1, 0})
+	camera_rot_x := linalg.matrix4_rotate(g_mem.player.pitch * math.TAU, Vec3{1, 0, 0})
+	camera_rot_y := linalg.matrix4_rotate(g_mem.player.yaw * math.TAU, Vec3{0, 1, 0})
 	return linalg.mul(camera_rot_y, camera_rot_x)
 }
 
@@ -669,7 +675,9 @@ game_init :: proc() {
 	g_mem = new(Game_Memory)
 
 	g_mem^ = Game_Memory {
-		player_pos = {2, 2, -3},
+		player = {
+			pos = {2, 2, -3},
+		},
 		default_shader = rl.LoadShader("default_lighting.vs", "default_lighting.fs"),
 		default_shader_instanced = rl.LoadShader("default_lighting_instanced.vs", "default_lighting.fs"),
 		shadowcasting_shader = rl.LoadShader("shadowcaster.vs", "shadowcaster.fs"),
@@ -793,7 +801,7 @@ set_light :: proc(n: int, enabled: bool, pos: Vec3, color: Vec4, directional: bo
 	type := directional ? 0 : 1
 	pos := pos
 	color := color
-	
+
 	rl.SetShaderValue(g_mem.default_shader, rl.GetShaderLocation(g_mem.default_shader, fmt.ctprintf("lights[%v].enabled", n)), &enabled, .INT)
 	rl.SetShaderValue(g_mem.default_shader, rl.GetShaderLocation(g_mem.default_shader, fmt.ctprintf("lights[%v].type", n)), &type, .INT)
 	rl.SetShaderValue(g_mem.default_shader, rl.GetShaderLocation(g_mem.default_shader, fmt.ctprintf("lights[%v].position", n)), raw_data(&pos), .VEC3)
