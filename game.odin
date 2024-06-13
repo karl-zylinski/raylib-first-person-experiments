@@ -599,18 +599,19 @@ draw_mesh_instanced :: proc(mesh: rl.Mesh, material: rl.Material, transforms: []
 
 	// Instances transformation matrices are send to shader attribute location: SHADER_LOC_MATRIX_MODEL
 	for i in 0..<4 {
-		rg.EnableVertexAttribute(u32(material.shader.locs[rg.ShaderLocationIndex.MATRIX_MODEL]) + u32(i))
+		loc := u32(SHADER_ATTRIB_LOCATION_INSTANCE_TRANSFORM + i)
+		rg.EnableVertexAttribute(loc)
 		offset := transmute(rawptr)(uintptr(i*size_of([4]f32)))
-		rg.SetVertexAttribute(u32(material.shader.locs[rg.ShaderLocationIndex.MATRIX_MODEL]) + u32(i), 4, rg.FLOAT, false, size_of(rl.Matrix), offset)
-		rg.SetVertexAttributeDivisor(u32(material.shader.locs[rg.ShaderLocationIndex.MATRIX_MODEL]) + u32(i), 1)
+		rg.SetVertexAttribute(loc, 4, rg.FLOAT, false, size_of(rl.Matrix), offset)
+		rg.SetVertexAttributeDivisor(loc, 1)
 	}
 	
 	rg.DisableVertexBuffer()
 
 	uv_remaps_vbo_id := rg.LoadVertexBuffer(raw_data(instance_uv_remaps), i32(len(atlas_rects)*size_of([4]f32)), false)
-	rg.EnableVertexAttribute(u32(material.shader.locs[SHADER_LOCATION_UVS]))
-	rg.SetVertexAttribute(u32(material.shader.locs[SHADER_LOCATION_UVS]), 4, rg.FLOAT, false, size_of([4]f32), nil)
-	rg.SetVertexAttributeDivisor(u32(material.shader.locs[SHADER_LOCATION_UVS]), 1)
+	rg.EnableVertexAttribute(SHADER_ATTRIB_LOCATION_INSTANCE_UV_REMAP)
+	rg.SetVertexAttribute(SHADER_ATTRIB_LOCATION_INSTANCE_UV_REMAP, 4, rg.FLOAT, false, size_of([4]f32), nil)
+	rg.SetVertexAttributeDivisor(SHADER_ATTRIB_LOCATION_INSTANCE_UV_REMAP, 1)
 
 	rg.DisableVertexBuffer()
 	rg.DisableVertexArray()
@@ -686,6 +687,15 @@ draw_mesh_instanced :: proc(mesh: rl.Mesh, material: rl.Material, transforms: []
 	rg.UnloadVertexBuffer(uv_remaps_vbo_id)
 }
 
+SHADER_ATTRIB_LOCATION_VERTEX_POSITION    :: 0
+SHADER_ATTRIB_LOCATION_VERTEX_TEXCOORD    :: 1
+SHADER_ATTRIB_LOCATION_VERTEX_NORMAL      :: 3
+SHADER_ATTRIB_LOCATION_VERTEX_COLOR       :: 4
+SHADER_ATTRIB_LOCATION_INSTANCE_TRANSFORM :: 6
+SHADER_ATTRIB_LOCATION_INSTANCE_UV_REMAP  :: 10
+
+
+
 @(export)
 game_init :: proc() {
 	g_mem = new(Game_Memory)
@@ -704,13 +714,41 @@ game_init :: proc() {
 		box_mesh = rl.GenMeshCube(1, 1, 1),
 		shadow_map = create_shadowmap_rt(4096, 4096),
 	}
+/*
+Uniform_Name :: enum {
+	Matrix_Model_View_Projection,
+	Matrix_View_Projection,
+	Matrix_View,
+	Matrix_Normal,
+}
+
+Shader :: struct {
+	id: c.uint,
+	uniforms: [Uniform_Name]c.int,
+}
+	load_shader :: proc(vs_name: string, fs_name: string) -> Shader {
+		vs_shader: c.int
+
+		if vs, ok := os.read_entire_file(vs_name); ok {
+			vs_shader = rg.CompileShader(temp_cstring(string(vs)), rg.VERTEX_SHADER)
+		}
+
+		fs_shader: c.int
+		if fs, ok := os.read_entire_file(fs_name); ok {
+			fs_shader = rg.CompileShader(temp_cstring(string(fs)), rg.VERTEX_SHADER)
+		}
+
+		rg.LoadShaderCode(vs_code, fs_code)
+
+		s: Shader
+		s.id = rg.LoadShaderProgram(vs_shader, fs_shader)
+		s.uniforms = {
+			.Matrix_Model_View_Projection = rl.
+		}
+	}*/
 
 	set_shader_location :: proc(s: ^rl.Shader, #any_int index: i32, name: cstring) {
 		s.locs[index] = rl.GetShaderLocation(s^, name)
-	}
-
-	set_shader_attrib_location :: proc(s: ^rl.Shader, #any_int index: i32, name: cstring) {
-		s.locs[index] = rl.GetShaderLocationAttrib(s^, name)
 	}
 
 	set_shader_location(&g_mem.default_shader, rl.ShaderLocationIndex.MATRIX_VIEW, "matView")
@@ -719,12 +757,7 @@ game_init :: proc() {
 
 	set_shader_location(&g_mem.default_shader_instanced, rl.ShaderLocationIndex.VECTOR_VIEW, "viewPos")
 	set_shader_location(&g_mem.default_shader_instanced, rl.ShaderLocationIndex.MATRIX_VIEW, "matView")
-	set_shader_attrib_location(&g_mem.default_shader_instanced, rg.ShaderLocationIndex.MATRIX_MODEL, "instanceTransform")
-	set_shader_attrib_location(&g_mem.default_shader_instanced, SHADER_LOCATION_UVS, "instanceUVRemap")
 	set_shader_location(&g_mem.default_shader_instanced, i32(rl.ShaderLocationIndex.MAP_ALBEDO) + 10, "shadowMap")
-
-	set_shader_attrib_location(&g_mem.shadowcasting_shader_instanced, SHADER_LOCATION_UVS, "instanceUVRemap")
-	set_shader_attrib_location(&g_mem.shadowcasting_shader_instanced, rg.ShaderLocationIndex.MATRIX_MODEL, "instanceTransform")
 
 	g_mem.default_mat = rl.LoadMaterialDefault()
 	g_mem.default_mat.shader = g_mem.default_shader
