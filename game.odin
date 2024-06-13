@@ -81,9 +81,6 @@ Game_Memory :: struct {
 
 	shadow_map: rl.RenderTexture2D,
 
-	squirrel_mat: rl.Material,
-	shadowcaster_mat_squirrel: rl.Material,
-
 	default_mat: rl.Material,
 	default_mat_instanced: rl.Material,
 	shadowcasting_mat: rl.Material,
@@ -116,7 +113,7 @@ update :: proc() {
 
 	//light_pos = {200*f32(math.cos(rl.GetTime())), 200, -200*f32(math.sin(rl.GetTime()))}
 
-	set_light(0, true, light_pos, { 1,1,1, 1 }, true)
+	set_light(0, true, light_pos, { 1,1,1,1 }, true)
 	dt = min(rl.GetFrameTime(), 0.033)
 	g_mem.time += f64(dt)
 
@@ -257,6 +254,8 @@ draw_skybox :: proc() {
 	c := rl.RED
 
 	rg.PushMatrix()
+		m := rl.MatrixToFloatV(auto_cast linalg.matrix4_translate(g_mem.player_pos))
+	 	rg.MultMatrixf(&m[0])
 		rg.Begin(rg.TRIANGLES)
 			rg.Color4ub(c.r, c.g, c.b, c.a)
 
@@ -319,23 +318,27 @@ draw_skybox :: proc() {
 }
 
 draw_world :: proc(shadowcaster: bool) {
-	rl.DrawModelEx(g_mem.teapot, {0, -4.5, -14}, {0, 1, 0}, 90, {0.3, 0.3, 0.3}, rl.WHITE)
+	//rl.DrawModelEx(g_mem.teapot, {0, -4.5, -14}, {0, 1, 0}, 90, {0.3, 0.3, 0.3}, rl.WHITE)
 
 	{
 		box_transforms := make([dynamic]rl.Matrix, context.temp_allocator)
+		npc_rects := make([dynamic]Rect, context.temp_allocator)
 
 		for b in g_mem.boxes {
 			m: rl.Matrix = auto_cast (linalg.matrix4_translate(b.pos) * linalg.matrix4_scale(b.size))
 			append(&box_transforms, m)
+			append(&npc_rects, Rect {})
 		}
 
 		mat := shadowcaster ? g_mem.shadowcasting_mat_instanced : g_mem.default_mat_instanced
 
-		draw_mesh_instanced(g_mem.box.meshes[0], mat, box_transforms[:])
+		draw_mesh_instanced(g_mem.box.meshes[0], mat, box_transforms[:], npc_rects[:])
 		//rl.DrawMeshInstanced(g_mem.box.meshes[0], mat, raw_data(box_transforms), i32(len(box_transforms)))
 	}
 
-	draw_billboard :: proc(pos: Vec3, texture: rl.Texture2D,  shadowcaster: bool) {
+	rl.DrawSphere({0, 1, 0}, 0.1, rl.GREEN)
+
+/*	draw_billboard :: proc(pos: Vec3, texture: rl.Texture2D,  shadowcaster: bool) {
 		cam := game_camera()
 
 		xz_cam_position := Vec3 {cam.position.x, 0, cam.position.z}
@@ -348,11 +351,34 @@ draw_world :: proc(shadowcaster: bool) {
 		g_mem.squirrel_mat.maps[0].texture = texture
 		g_mem.shadowcaster_mat_squirrel.maps[0].texture = texture
 		rl.DrawMesh(g_mem.plane_mesh, shadowcaster ? g_mem.shadowcaster_mat_squirrel : g_mem.squirrel_mat, auto_cast squirrel_transf)
-	}
+	}*/
 
 	rg.DisableBackfaceCulling()
-	draw_billboard({0, 0.43, -5}, g_mem.atlas, shadowcaster)
-	draw_billboard({2, 0.5, -5}, g_mem.atlas, shadowcaster)
+	{
+		npc_transforms := make([dynamic]rl.Matrix, context.temp_allocator)
+		npc_rects := make([dynamic]Rect, context.temp_allocator)
+
+		get_npc_transform :: proc(pos: Vec3) -> rl.Matrix {
+			cam := game_camera()
+
+			xz_cam_position := Vec3 {cam.position.x, 0, cam.position.z}
+			
+			cam_dir := linalg.normalize0(Vec3{pos.x, 0, pos.z} - xz_cam_position)
+			forward := Vec3{0, 0, -1}
+			yr := math.acos(linalg.dot(cam_dir, forward)) * math.sign(linalg.dot(cam_dir, Vec3{-1, 0, 0}))
+
+			return auto_cast(linalg.matrix4_translate(pos) * linalg.matrix4_rotate(yr, Vec3{0, 1, 0}) * linalg.matrix4_rotate(math.TAU/4, Vec3{1, 0, 0}) * linalg.matrix4_scale(Vec3{1, 0.01, 1}))
+		}
+
+		append(&npc_transforms, get_npc_transform({0, 0.43, -5}))
+		append(&npc_rects, atlas_textures[.Squirrel].rect)
+		append(&npc_transforms, get_npc_transform({2, 0.5, -5}))
+		append(&npc_rects, atlas_textures[.Cat].rect)
+
+		mat := shadowcaster ? g_mem.shadowcasting_mat_instanced : g_mem.default_mat_instanced
+
+		draw_mesh_instanced(g_mem.plane_mesh, mat, npc_transforms[:], npc_rects[:])
+	}
 	rg.EnableBackfaceCulling()
 }
 
@@ -447,6 +473,10 @@ draw :: proc() {
 
 @(export)
 game_update :: proc() -> bool {
+
+
+	//set_light(1, true, {0, 1, f32(math.cos(rl.GetTime()))*10 }, { 1,1,1, 1 }, false)
+
 	update()
 	draw()
 	return !rl.WindowShouldClose()
@@ -513,9 +543,10 @@ bounding_box_overlap :: proc(b1: rl.BoundingBox, b2: rl.BoundingBox) -> (res: rl
 
 light_pos := Vec3{20, 20, -20}
 
+SHADER_LOCATION_UVS :: len(rg.ShaderLocationIndex)
 
 // Draw multiple mesh instances with material and different transforms
-draw_mesh_instanced :: proc(mesh: rl.Mesh, material: rl.Material, transforms: []rl.Matrix) {
+draw_mesh_instanced :: proc(mesh: rl.Mesh, material: rl.Material, transforms: []rl.Matrix, uv_rects: []Rect) {
     // Bind shader program
     rg.EnableShader(material.shader.id)
 
@@ -563,13 +594,32 @@ draw_mesh_instanced :: proc(mesh: rl.Mesh, material: rl.Material, transforms: []
     	rg.SetUniformMatrix(material.shader.locs[rg.ShaderLocationIndex.MATRIX_PROJECTION], matProjection)
     }
 
+    assert(len(transforms) == len(uv_rects))
     // Create instances buffer
     instanceTransforms := make([][16]f32, len(transforms), context.temp_allocator)
+    instanceUVRemaps := make([][4]f32, len(uv_rects), context.temp_allocator)
 
     // Fill buffer with instances transformations as float16 arrays
     for t, i in transforms {
     	instanceTransforms[i] = rl.MatrixToFloatV(t)
     }
+
+    for r, i in uv_rects {
+    	if r == {} {
+    		instanceUVRemaps[i] = {-1, -1, -1, -1}
+    		continue
+    	}
+
+    	v := [4]f32 {
+    		r.x/f32(g_mem.atlas.width),
+    		(r.x + r.width)/f32(g_mem.atlas.width),
+    		r.y/f32(g_mem.atlas.height),
+    		(r.y + r.height)/f32(g_mem.atlas.height),
+    	}
+
+    	instanceUVRemaps[i] = v
+    }
+
 
     // Enable mesh VAO to attach new buffer
     rg.EnableVertexArray(mesh.vaoId)
@@ -587,6 +637,12 @@ draw_mesh_instanced :: proc(mesh: rl.Mesh, material: rl.Material, transforms: []
         rg.SetVertexAttribute(u32(material.shader.locs[rg.ShaderLocationIndex.MATRIX_MODEL]) + i, 4, rg.FLOAT, false, size_of(rl.Matrix), transmute(rawptr)(uintptr(i*size_of([4]f32))))
         rg.SetVertexAttributeDivisor(u32(material.shader.locs[rg.ShaderLocationIndex.MATRIX_MODEL]) + i, 1)
     }
+    //rg.DisableVertexBuffer()
+
+   	uvRemapsVboId := rg.LoadVertexBuffer(raw_data(instanceUVRemaps), i32(len(uv_rects)*size_of([4]f32)), false)
+    rg.EnableVertexAttribute(u32(material.shader.locs[SHADER_LOCATION_UVS]))
+    rg.SetVertexAttribute(u32(material.shader.locs[SHADER_LOCATION_UVS]), 4, rg.FLOAT, false, size_of([4]f32), nil)
+    rg.SetVertexAttributeDivisor(u32(material.shader.locs[SHADER_LOCATION_UVS]), 1)
 
     rg.DisableVertexBuffer()
     rg.DisableVertexArray()
@@ -597,7 +653,7 @@ draw_mesh_instanced :: proc(mesh: rl.Mesh, material: rl.Material, transforms: []
 
     // Upload model normal matrix (if locations available)
     if (material.shader.locs[rg.ShaderLocationIndex.MATRIX_NORMAL] != -1) {
-    	rg.SetUniformMatrix(material.shader.locs[rg.ShaderLocationIndex.MATRIX_NORMAL], rl.Matrix(1))
+    	rg.SetUniformMatrix(material.shader.locs[rg.ShaderLocationIndex.MATRIX_NORMAL], rl.MatrixTranspose(rl.MatrixInvert(rg.GetMatrixTransform())))
     }
 
     //-----------------------------------------------------
@@ -737,6 +793,8 @@ draw_mesh_instanced :: proc(mesh: rl.Mesh, material: rl.Material, transforms: []
 
     // Remove instance transforms buffer
     rg.UnloadVertexBuffer(instancesVboId)
+    rg.UnloadVertexBuffer(uvRemapsVboId)
+    
 }
 
 
@@ -767,40 +825,35 @@ game_init :: proc() {
 		s.locs[index] = rl.GetShaderLocationAttrib(s^, name)
 	}
 
+	set_shader_location(&g_mem.default_shader, rl.ShaderLocationIndex.MATRIX_VIEW, "matView")
 	set_shader_location(&g_mem.default_shader, rl.ShaderLocationIndex.VECTOR_VIEW, "viewPos")
-	set_shader_location(&g_mem.default_shader, rl.ShaderLocationIndex.MATRIX_MVP, "mvp")
 	set_shader_location(&g_mem.default_shader, i32(rl.ShaderLocationIndex.MAP_ALBEDO) + 10, "shadowMap")
 
 	set_shader_location(&g_mem.default_shader_instanced, rl.ShaderLocationIndex.VECTOR_VIEW, "viewPos")
-	set_shader_location(&g_mem.default_shader_instanced, rl.ShaderLocationIndex.MATRIX_MVP, "mvp")
-	set_shader_attrib_location(&g_mem.default_shader_instanced, rl.ShaderLocationIndex.MATRIX_MODEL, "instanceTransform")
+	set_shader_location(&g_mem.default_shader_instanced, rl.ShaderLocationIndex.MATRIX_VIEW, "matView")
+	set_shader_attrib_location(&g_mem.default_shader_instanced, rg.ShaderLocationIndex.MATRIX_MODEL, "instanceTransform")
+	set_shader_attrib_location(&g_mem.default_shader_instanced, SHADER_LOCATION_UVS, "instanceUVRemap")
 	set_shader_location(&g_mem.default_shader_instanced, i32(rl.ShaderLocationIndex.MAP_ALBEDO) + 10, "shadowMap")
 
-	set_shader_location(&g_mem.shadowcasting_shader, rl.ShaderLocationIndex.MATRIX_MVP, "mvp")
-
-	set_shader_location(&g_mem.shadowcasting_shader_instanced, rl.ShaderLocationIndex.MATRIX_MVP, "mvp")
-	set_shader_attrib_location(&g_mem.shadowcasting_shader_instanced, rl.ShaderLocationIndex.MATRIX_MODEL, "instanceTransform")
+	set_shader_attrib_location(&g_mem.shadowcasting_shader_instanced, SHADER_LOCATION_UVS, "instanceUVRemap")
+	set_shader_attrib_location(&g_mem.shadowcasting_shader_instanced, rg.ShaderLocationIndex.MATRIX_MODEL, "instanceTransform")
 
 	g_mem.default_mat = rl.LoadMaterialDefault()
 	g_mem.default_mat.shader = g_mem.default_shader
+	g_mem.default_mat.maps[0].texture = g_mem.atlas
 	g_mem.default_mat.maps[10].texture = g_mem.shadow_map.depth
 
 	g_mem.default_mat_instanced = rl.LoadMaterialDefault()
 	g_mem.default_mat_instanced.shader = g_mem.default_shader_instanced
+	g_mem.default_mat_instanced.maps[0].texture = g_mem.atlas
 	g_mem.default_mat_instanced.maps[10].texture = g_mem.shadow_map.depth
 
 	g_mem.shadowcasting_mat = rl.LoadMaterialDefault()
 	g_mem.shadowcasting_mat.shader = g_mem.shadowcasting_shader
 
 	g_mem.shadowcasting_mat_instanced = rl.LoadMaterialDefault()
+	g_mem.shadowcasting_mat_instanced.maps[0].texture = g_mem.atlas
 	g_mem.shadowcasting_mat_instanced.shader = g_mem.shadowcasting_shader_instanced
-
-	g_mem.shadowcaster_mat_squirrel = rl.LoadMaterialDefault()
-	g_mem.shadowcaster_mat_squirrel.shader = g_mem.default_shader
-	g_mem.shadowcaster_mat_squirrel.maps[0].texture = g_mem.atlas
-
-	g_mem.squirrel_mat = rl.LoadMaterialDefault()
-	g_mem.squirrel_mat.shader = g_mem.default_shader
 
 	g_mem.plane = rl.LoadModelFromMesh(g_mem.plane_mesh)
 
@@ -808,8 +861,6 @@ game_init :: proc() {
 		g_mem.plane.materials[midx].shader = g_mem.default_shader
 	}
 
-	g_mem.squirrel_mat.maps[0].texture = g_mem.atlas
-	g_mem.squirrel_mat.maps[10].texture = g_mem.shadow_map.depth
 
 	ambient := Vec4{ 0.2, 0.2, 0.3, 1.0}
 	rl.SetShaderValue(g_mem.default_shader, rl.GetShaderLocation(g_mem.default_shader, "ambient"), raw_data(&ambient), .VEC4)
@@ -826,7 +877,7 @@ game_init :: proc() {
     	g_mem.box.materials[midx].maps[rl.MaterialMapIndex.ALBEDO].color = rl.RED
 	}
 
-	//set_light(1, true, {0, 3, -3}, { 1,1,1, 1 }, false)
+	//set_light(1, true, {0, 1, 0}, { 1,1,1, 1 }, false)
 
 	append(&g_mem.climb_points, Climb_Point {
 		pos = {0,  0.2, -10},

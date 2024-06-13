@@ -1,15 +1,25 @@
 #version 330
 
-in vec3 vertexPosition;
-in vec2 vertexTexCoord;
+layout(location=0) in vec3 vertexPosition;
+layout(location=1) in vec2 vertexTexCoord;
 
-in mat4 instanceTransform;
+layout(location=6) in mat4 instanceTransform;
+layout(location=10)in vec4 instanceUVRemap;
 uniform mat4 mvp;
 
 out vec2 fragTexCoord;
 
+float remap(float old_value, float old_min, float old_max, float new_min, float new_max) {
+    float old_range = old_max - old_min;
+    float new_range = new_max - new_min;
+    if (old_range == 0) {
+        return new_range / 2;
+    }
+    return clamp(((old_value - old_min) / old_range) * new_range + new_min, new_min, new_max);
+}
 void main()
 {
-	fragTexCoord = vertexTexCoord;
+    fragTexCoord.x = remap(vertexTexCoord.x, 0, 1, instanceUVRemap.x, instanceUVRemap.y);
+    fragTexCoord.y = remap(vertexTexCoord.y, 0, 1, instanceUVRemap.z, instanceUVRemap.w);
 	gl_Position = mvp*instanceTransform*vec4(vertexPosition, 1.0);
 }

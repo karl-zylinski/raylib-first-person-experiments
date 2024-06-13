@@ -1,16 +1,17 @@
 #version 330
 
 // Input vertex attributes
-in vec3 vertexPosition;
-in vec2 vertexTexCoord;
-in vec3 vertexNormal;
-//in vec4 vertexColor;
+layout(location=0) in vec3 vertexPosition;
+layout(location=1) in vec2 vertexTexCoord;
+layout(location=2) in vec3 vertexNormal;
+layout(location=3)//in vec4 vertexColor;
 
-in mat4 instanceTransform;
-//in vec4 instanceUVRemap;
+layout(location=6) in mat4 instanceTransform;
+layout(location=10)in vec4 instanceUVRemap;
 
 // Input uniform values
 uniform mat4 mvp;
+uniform mat4 matView;
 uniform mat4 matNormal;
 
 // Output vertex attributes (to fragment shader)
@@ -34,11 +35,13 @@ void main()
 {
     // Send vertex attributes to fragment shader
     fragPosition = vec3(instanceTransform*vec4(vertexPosition, 1.0));
-    //fragTexCoord.x = remap(vertexTexCoord.x, 0, 1, instanceUVRemap.x, instanceUVRemap.y);
-    //fragTexCoord.y = remap(vertexTexCoord.y, 0, 1, instanceUVRemap.z, instanceUVRemap.w);
-    fragTexCoord = vertexTexCoord;
+    fragTexCoord.x = remap(vertexTexCoord.x, 0, 1, instanceUVRemap.x, instanceUVRemap.y);
+    fragTexCoord.y = remap(vertexTexCoord.y, 0, 1, instanceUVRemap.z, instanceUVRemap.w);
+
+    mat4 mn = transpose(inverse(instanceTransform));
+
     //fragColor = vertexColor;
-    fragNormal = normalize(vec3(matNormal*vec4(vertexNormal, 1.0)));
+    fragNormal = normalize(vec3(mn*vec4(vertexNormal, 1.0)));
 
     // Calculate final vertex position
     gl_Position = mvp*instanceTransform*vec4(vertexPosition, 1.0);

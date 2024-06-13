@@ -49,6 +49,8 @@ void main()
 	// Texel color fetching from texture sampler
 	vec4 texelColor = texture(texture0, fragTexCoord);
 
+	texelColor = mix(vec4(1), texelColor, step(0, fragTexCoord.x));
+
 	if (texelColor.a == 0.0) {
 		discard;
 	}
@@ -103,6 +105,7 @@ void main()
     // In this case, the bias is proportional to the slope of the surface, relative to the light
 
     float bias = 0.00001 * tan(acos(dot(normal,l)));
+    //float bias = 0.0001;
     //float bias = max(0.0001 * (1.0 - dot(normal, l)), 0.00002) + 0.00001;
     int shadowCounter = 0;
     const int numSamples = 9;
@@ -132,7 +135,6 @@ void main()
 
     lightDot = mix(lightDot, cA, float(shadowCounter) / float(numSamples));
 	finalColor = texelColor*colDiffuse*vec4(lightDot, 1) - vec4(0, distance_darkening, distance_darkening, 0);
-
 	// Gamma correction
 	finalColor = pow(finalColor, vec4(1.0/2.2));
 }
