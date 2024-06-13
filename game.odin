@@ -97,6 +97,11 @@ player_eye_pos :: proc() -> Vec3 {
 
 dt: f32
 
+player_set_state :: proc(state: Player_State) {
+	g_mem.player.state_start = g_mem.time
+	g_mem.player.state = state
+}
+
 update :: proc() {
 	// Rotate light
 	// light_pos = {20*f32(math.cos(rl.GetTime())), 20, -20*f32(math.sin(rl.GetTime()))}
@@ -154,11 +159,10 @@ update :: proc() {
 			p.pos = math.lerp(s.start, end_pos, t)
 
 			if t >= 1 {
-				p.state = Player_State_Climb_Down {
+				player_set_state(Player_State_Climb_Down {
 					start = p.pos,
 					end = p.pos - {0, 4, 0},
-				}
-				p.state_start = g_mem.time
+				})
 			}
 
 		case Player_State_Climb_Down:
@@ -166,10 +170,9 @@ update :: proc() {
 			p.pos = math.lerp(s.start, s.end, t)
 
 			if t >= 1 {
-				p.state = Player_State_Climb_End {
+				player_set_state(Player_State_Climb_End {
 					start_yaw = p.yaw,
-				}
-				p.state_start = g_mem.time
+				})
 			}
 
 		case Player_State_Climb_End:
@@ -214,7 +217,7 @@ update :: proc() {
 		}
 	}
 
-	p.pos.z += p.vel.z * rl.GetFrameTime()
+	p.pos.z += p.vel.z * dt
 
 	for b in g_mem.boxes {
 		bb := rl.BoundingBox {
@@ -415,13 +418,12 @@ draw :: proc() {
 			crosshair_color = rl.GREEN
 
 			if rl.IsKeyPressed(.E) && union_type(g_mem.player.state) == Player_State_Default {
-				g_mem.player.state = Player_State_Climb_Start {
+				player_set_state(Player_State_Climb_Start {
 					point = c,
 					start = g_mem.player.pos,
 					start_pitch = g_mem.player.pitch,
 					start_yaw = g_mem.player.yaw,
-				}
-				g_mem.player.state_start = g_mem.time
+				})
 				break
 			}
 		}
