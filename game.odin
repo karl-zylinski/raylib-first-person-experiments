@@ -507,13 +507,9 @@ light_pos := Vec3{20, 20, -20}
 
 SHADER_LOCATION_UVS :: len(rg.ShaderLocationIndex)
 
-// Draw multiple mesh instances with material and different transforms
-draw_mesh_instanced :: proc(mesh: rl.Mesh, material: rl.Material, transforms: []rl.Matrix, uv_rects: []Rect) {
-	// Bind shader program
+draw_mesh_instanced :: proc(mesh: rl.Mesh, material: rl.Material, transforms: []rl.Matrix, atlas_rects: []Rect) {
 	rg.EnableShader(material.shader.id)
 
-	// Send required data to shader (matrices, values)
-	//-----------------------------------------------------
 	// Upload to shader material.colDiffuse
 	if material.shader.locs[rg.ShaderLocationIndex.COLOR_DIFFUSE] != -1 {
 		values := [4]f32 {
@@ -538,37 +534,31 @@ draw_mesh_instanced :: proc(mesh: rl.Mesh, material: rl.Material, transforms: []
 		rg.SetUniform(material.shader.locs[rg.ShaderLocationIndex.COLOR_SPECULAR], raw_data(&values), i32(rl.ShaderUniformDataType.VEC4), 1)
 	}
 
-	// Get a copy of current matrices to work with,
-	// just in case stereo render is required, and we need to modify them
-	// NOTE: At this point the modelview matrix just contains the view matrix (camera)
-	// That's because BeginMode3D() sets it and there is no model-drawing function
-	// that modifies it, all use rlPushMatrix() and rlPopMatrix()
-	matView := rg.GetMatrixModelview()
-	matModelView := rl.Matrix(1)
-	matProjection := rg.GetMatrixProjection()
+	// Populate uniform matrices
+	mat_view := rg.GetMatrixModelview()
+	mat_projection := rg.GetMatrixProjection()
 
-	// Upload view and projection matrices (if locations available)
-	if (material.shader.locs[rg.ShaderLocationIndex.MATRIX_VIEW] != -1) {
-		rg.SetUniformMatrix(material.shader.locs[rg.ShaderLocationIndex.MATRIX_VIEW], matView)
+	if material.shader.locs[rg.ShaderLocationIndex.MATRIX_VIEW] != -1 {
+		rg.SetUniformMatrix(material.shader.locs[rg.ShaderLocationIndex.MATRIX_VIEW], mat_view)
 	}
 
-	if (material.shader.locs[rg.ShaderLocationIndex.MATRIX_PROJECTION] != -1) {
-		rg.SetUniformMatrix(material.shader.locs[rg.ShaderLocationIndex.MATRIX_PROJECTION], matProjection)
+	if material.shader.locs[rg.ShaderLocationIndex.MATRIX_PROJECTION] != -1 {
+		rg.SetUniformMatrix(material.shader.locs[rg.ShaderLocationIndex.MATRIX_PROJECTION], mat_projection)
 	}
 
-	assert(len(transforms) == len(uv_rects))
-	// Create instances buffer
-	instanceTransforms := make([][16]f32, len(transforms), context.temp_allocator)
-	instanceUVRemaps := make([][4]f32, len(uv_rects), context.temp_allocator)
+	assert(len(transforms) == len(atlas_rects))
 
-	// Fill buffer with instances transformations as float16 arrays
+	// Create instance buffers
+	instance_transforms := make([][16]f32, len(transforms), context.temp_allocator)
+	instance_uv_remaps := make([][4]f32, len(atlas_rects), context.temp_allocator)
+
 	for t, i in transforms {
-		instanceTransforms[i] = rl.MatrixToFloatV(t)
+		instance_transforms[i] = rl.MatrixToFloatV(t)
 	}
 
-	for r, i in uv_rects {
+	for r, i in atlas_rects {
 		if r == {} {
-			instanceUVRemaps[i] = {-1, -1, -1, -1}
+			instance_uv_remaps[i] = {-1, -1, -1, -1}
 			continue
 		}
 
@@ -579,29 +569,25 @@ draw_mesh_instanced :: proc(mesh: rl.Mesh, material: rl.Material, transforms: []
 			(r.y + r.height)/f32(g_mem.atlas.height),
 		}
 
-		instanceUVRemaps[i] = v
+		instance_uv_remaps[i] = v
 	}
-
 
 	// Enable mesh VAO to attach new buffer
 	rg.EnableVertexArray(mesh.vaoId)
 
-	// This could alternatively use a static VBO and either glMapBuffer() or glBufferSubData().
-	// It isn't clear which would be reliably faster in all cases and on all platforms,
-	// anecdotally glMapBuffer() seems very slow (syncs) while glBufferSubData() seems
-	// no faster, since we're transferring all the transform matrices anyway
-	instancesVboId := rg.LoadVertexBuffer(raw_data(instanceTransforms), i32(len(transforms)*size_of([16]f32)), false)
+	transforms_vbo_id := rg.LoadVertexBuffer(raw_data(instance_transforms), i32(len(transforms)*size_of([16]f32)), false)
 
 	// Instances transformation matrices are send to shader attribute location: SHADER_LOC_MATRIX_MODEL
-	for ii in 0..<4 {
-		i := u32(ii)
-		rg.EnableVertexAttribute(u32(material.shader.locs[rg.ShaderLocationIndex.MATRIX_MODEL]) + i)
-		rg.SetVertexAttribute(u32(material.shader.locs[rg.ShaderLocationIndex.MATRIX_MODEL]) + i, 4, rg.FLOAT, false, size_of(rl.Matrix), transmute(rawptr)(uintptr(i*size_of([4]f32))))
-		rg.SetVertexAttributeDivisor(u32(material.shader.locs[rg.ShaderLocationIndex.MATRIX_MODEL]) + i, 1)
+	for i in 0..<4 {
+		rg.EnableVertexAttribute(u32(material.shader.locs[rg.ShaderLocationIndex.MATRIX_MODEL]) + u32(i))
+		offset := transmute(rawptr)(uintptr(i*size_of([4]f32)))
+		rg.SetVertexAttribute(u32(material.shader.locs[rg.ShaderLocationIndex.MATRIX_MODEL]) + u32(i), 4, rg.FLOAT, false, size_of(rl.Matrix), offset)
+		rg.SetVertexAttributeDivisor(u32(material.shader.locs[rg.ShaderLocationIndex.MATRIX_MODEL]) + u32(i), 1)
 	}
-	//rg.DisableVertexBuffer()
+	
+	rg.DisableVertexBuffer()
 
-	uvRemapsVboId := rg.LoadVertexBuffer(raw_data(instanceUVRemaps), i32(len(uv_rects)*size_of([4]f32)), false)
+	uv_remaps_vbo_id := rg.LoadVertexBuffer(raw_data(instance_uv_remaps), i32(len(atlas_rects)*size_of([4]f32)), false)
 	rg.EnableVertexAttribute(u32(material.shader.locs[SHADER_LOCATION_UVS]))
 	rg.SetVertexAttribute(u32(material.shader.locs[SHADER_LOCATION_UVS]), 4, rg.FLOAT, false, size_of([4]f32), nil)
 	rg.SetVertexAttributeDivisor(u32(material.shader.locs[SHADER_LOCATION_UVS]), 1)
@@ -609,30 +595,25 @@ draw_mesh_instanced :: proc(mesh: rl.Mesh, material: rl.Material, transforms: []
 	rg.DisableVertexBuffer()
 	rg.DisableVertexArray()
 
-	// Accumulate internal matrix transform (push/pop) and view matrix
-	// NOTE: In this case, model instance transformation must be computed in the shader
-	matModelView = matView * rg.GetMatrixTransform()//rl.MatrixMultiply(rg.GetMatrixTransform(), matView)
-
 	// Upload model normal matrix (if locations available)
-	if (material.shader.locs[rg.ShaderLocationIndex.MATRIX_NORMAL] != -1) {
+	if material.shader.locs[rg.ShaderLocationIndex.MATRIX_NORMAL] != -1 {
 		rg.SetUniformMatrix(material.shader.locs[rg.ShaderLocationIndex.MATRIX_NORMAL], rl.MatrixTranspose(rl.MatrixInvert(rg.GetMatrixTransform())))
 	}
 
-	//-----------------------------------------------------
-
 	// Bind active texture maps (if available)
-	
+
 	// copied from rconfig.h
 	MAX_MATERIAL_MAPS :: 12
 
 	for ii in 0..<MAX_MATERIAL_MAPS {
 		i := i32(ii)
-		mi := rl.MaterialMapIndex(i)
-		if (material.maps[i].texture.id > 0) {
+
+		if material.maps[i].texture.id > 0 {
 			// Select current shader texture slot
 			rg.ActiveTextureSlot(i)
 
 			// Enable texture for active slot
+			mi := rl.MaterialMapIndex(i)
 			if mi == rl.MaterialMapIndex.IRRADIANCE || mi == rl.MaterialMapIndex.PREFILTER || mi == rl.MaterialMapIndex.CUBEMAP {
 				rg.EnableTextureCubemap(material.maps[i].texture.id)
 			} else {
@@ -645,99 +626,26 @@ draw_mesh_instanced :: proc(mesh: rl.Mesh, material: rl.Material, transforms: []
 
 	rg.EnableVertexArray(mesh.vaoId)
 
-	/*// Try binding vertex array objects (VAO)
-	// or use VBOs if not possible
-	if (!rg.EnableVertexArray(mesh.vaoId))
-	{
-		// Bind mesh VBO data: vertex position (shader-location = 0)
-		rg.EnableVertexBuffer(mesh.vboId[0])
-		rg.SetVertexAttribute(u32(material.shader.locs[rg.ShaderLocationIndex.VERTEX_POSITION]), 3, rg.FLOAT, false, 0, nil)
-		rg.EnableVertexAttribute(u32(material.shader.locs[rg.ShaderLocationIndex.VERTEX_POSITION]))
+	mat_view_projection := mat_projection * mat_view * rg.GetMatrixTransform()
+	rg.SetUniformMatrix(material.shader.locs[rl.ShaderLocationIndex.MATRIX_MVP], mat_view_projection)
 
-		// Bind mesh VBO data: vertex texcoords (shader-location = 1)
-		rg.EnableVertexBuffer(mesh.vboId[1])
-		rg.SetVertexAttribute(u32(material.shader.locs[rg.ShaderLocationIndex.VERTEX_TEXCOORD01]), 2, rg.FLOAT, false, 0, nil)
-		rg.EnableVertexAttribute(u32(material.shader.locs[rg.ShaderLocationIndex.VERTEX_TEXCOORD01]))
-
-		if (material.shader.locs[rg.ShaderLocationIndex.VERTEX_NORMAL] != -1)
-		{
-			// Bind mesh VBO data: vertex normals (shader-location = 2)
-			rg.EnableVertexBuffer(mesh.vboId[2])
-			rg.SetVertexAttribute(material.shader.locs[rg.ShaderLocationIndex.VERTEX_NORMAL], 3, RL_FLOAT, 0, 0, 0)
-			rg.EnableVertexAttribute(material.shader.locs[rg.ShaderLocationIndex.VERTEX_NORMAL])
-		}
-
-		// Bind mesh VBO data: vertex colors (shader-location = 3, if available)
-		if (material.shader.locs[SHADER_LOC_VERTEX_COLOR] != -1)
-		{
-			if (mesh.vboId[3] != 0)
-			{
-				rg.EnableVertexBuffer(mesh.vboId[3])
-				rg.SetVertexAttribute(material.shader.locs[SHADER_LOC_VERTEX_COLOR], 4, RL_UNSIGNED_BYTE, 1, 0, 0)
-				rg.EnableVertexAttribute(material.shader.locs[SHADER_LOC_VERTEX_COLOR])
-			}
-			else
-			{
-				// Set default value for unused attribute
-				// NOTE: Required when using default shader and no VAO support
-				value := [4]f32 { 1, 1, 1, 1 }
-				rg.SetVertexAttributeDefault(material.shader.locs[SHADER_LOC_VERTEX_COLOR], value, SHADER_ATTRIB_VEC4, 4)
-				rg.DisableVertexAttribute(material.shader.locs[SHADER_LOC_VERTEX_COLOR])
-			}
-		}
-
-		// Bind mesh VBO data: vertex tangents (shader-location = 4, if available)
-		if (material.shader.locs[SHADER_LOC_VERTEX_TANGENT] != -1)
-		{
-			rg.EnableVertexBuffer(mesh.vboId[4])
-			rg.SetVertexAttribute(material.shader.locs[SHADER_LOC_VERTEX_TANGENT], 4, RL_FLOAT, 0, 0, 0)
-			rg.EnableVertexAttribute(material.shader.locs[SHADER_LOC_VERTEX_TANGENT])
-		}
-
-		// Bind mesh VBO data: vertex texcoords2 (shader-location = 5, if available)
-		if (material.shader.locs[SHADER_LOC_VERTEX_TEXCOORD02] != -1)
-		{
-			rg.EnableVertexBuffer(mesh.vboId[5])
-			rg.SetVertexAttribute(material.shader.locs[SHADER_LOC_VERTEX_TEXCOORD02], 2, RL_FLOAT, 0, 0, 0)
-			rg.EnableVertexAttribute(material.shader.locs[SHADER_LOC_VERTEX_TEXCOORD02])
-		}
-
-		if (mesh.indices != NULL) {
-			rg.EnableVertexBufferElement(mesh.vboId[6])
-		}
-	}
-
-	// WARNING: Disable vertex attribute color input if mesh can not provide that data (despite location being enabled in shader)
-	if mesh.vboId[3] == 0 {
-		rg.DisableVertexAttribute(u32(material.shader.locs[rg.ShaderLocationIndex.VERTEX_COLOR]))
-	}*/
-
-	{
-		// Calculate model-view-projection matrix (MVP)
-		matModelViewProjection := matProjection * matModelView// rl.MatrixMultiply(matModelView, matProjection)
-
-		// Send combined model-view-projection matrix to shader
-		rg.SetUniformMatrix(material.shader.locs[rl.ShaderLocationIndex.MATRIX_MVP], matModelViewProjection)
-
-		// Draw mesh instanced
-		if (mesh.indices != nil) {
-			rg.DrawVertexArrayElementsInstanced(0, mesh.triangleCount*3, nil, i32(len(transforms)))
-		} else {
-			rg.DrawVertexArrayInstanced(0, mesh.vertexCount, i32(len(transforms)))
-		}
+	// Draw mesh instanced
+	if mesh.indices != nil {
+		rg.DrawVertexArrayElementsInstanced(0, mesh.triangleCount*3, nil, i32(len(transforms)))
+	} else {
+		rg.DrawVertexArrayInstanced(0, mesh.vertexCount, i32(len(transforms)))
 	}
 
 	// Unbind all bound texture maps
 	for ii in 0..<MAX_MATERIAL_MAPS {
 		i := i32(ii)
-		mi := rl.MaterialMapIndex(i)
-		if (material.maps[i].texture.id > 0)
-		{
+		if material.maps[i].texture.id > 0 {
 			// Select current shader texture slot
 			rg.ActiveTextureSlot(i)
 
 			// Disable texture for active slot
-			if ((mi == rl.MaterialMapIndex.IRRADIANCE) || (mi == rl.MaterialMapIndex.PREFILTER) || (mi == rl.MaterialMapIndex.CUBEMAP)) {
+			mi := rl.MaterialMapIndex(i)
+			if mi == rl.MaterialMapIndex.IRRADIANCE || mi == rl.MaterialMapIndex.PREFILTER || mi == rl.MaterialMapIndex.CUBEMAP {
 				rg.DisableTextureCubemap()
 			} else {
 				rg.DisableTexture()
@@ -754,11 +662,9 @@ draw_mesh_instanced :: proc(mesh: rl.Mesh, material: rl.Material, transforms: []
 	rg.DisableShader()
 
 	// Remove instance transforms buffer
-	rg.UnloadVertexBuffer(instancesVboId)
-	rg.UnloadVertexBuffer(uvRemapsVboId)
-	
+	rg.UnloadVertexBuffer(transforms_vbo_id)
+	rg.UnloadVertexBuffer(uv_remaps_vbo_id)
 }
-
 
 @(export)
 game_init :: proc() {
