@@ -27,8 +27,7 @@ float remap(float old_value, float old_min, float old_max, float new_min, float 
     return clamp(((old_value - old_min) / old_range) * new_range + new_min, new_min, new_max);
 }
 
-void main()
-{
+void main() {
     // Send vertex attributes to fragment shader
     frag_world_pos = vec3(instance_transform*vec4(vertex_position, 1.0));
     frag_texcoord.x = remap(vertex_texcoord.x, 0, 1, instance_uv_remap.x, instance_uv_remap.y);

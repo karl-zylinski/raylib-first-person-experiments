@@ -7,8 +7,7 @@ uniform mat4 mvp;
 
 out vec2 frag_texcoord;
 
-void main()
-{
+void main() {
 	frag_texcoord = vertex_texcoord;
 	gl_Position = mvp*vec4(vertex_position, 1.0);
 }
