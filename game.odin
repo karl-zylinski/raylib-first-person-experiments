@@ -111,7 +111,7 @@ update :: proc() {
 	fmt.println("diffuse", i32(rg.ShaderLocationIndex.MAP_))
 	fmt.println("metalness", i32(rg.ShaderLocationIndex.MAP_METALNESS))*/
 
-	//light_pos = {200*f32(math.cos(rl.GetTime())), 200, -200*f32(math.sin(rl.GetTime()))}
+	// light_pos = {20*f32(math.cos(rl.GetTime())), 20, -20*f32(math.sin(rl.GetTime()))}
 
 	set_light(0, true, light_pos, { 1,1,1,1 }, true)
 	dt = min(rl.GetFrameTime(), 0.033)
@@ -466,7 +466,7 @@ draw :: proc() {
 
 	rl.DrawCircleV(screen_mid, 5, crosshair_color)
 
-	//rl.DrawTextureEx(g_mem.shadow_map.depth, {}, 0, 0.2, rl.WHITE)
+	//rl.DrawTextureEx(g_mem.shadow_map.depth, {}, 0, 0.1, rl.WHITE)
 
 	rl.EndDrawing()
 }

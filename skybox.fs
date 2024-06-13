@@ -13,5 +13,5 @@ void main()
 {
 	vec3 dir = normalize(fragPosition);
 	float upness = dot(dir, vec3(0, 1, 0));
-	finalColor = vec4(0.5, 0.6, 0.9, 1);
+	finalColor = vec4(vec3(0.5, 0.6, 0.9) + vec3(0.2, 0.2, 0.2) * upness, 1);
 }
