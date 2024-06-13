@@ -57,16 +57,13 @@ Game_Memory :: struct {
 	shadowcasting_shader: rl.Shader,
 	shadowcasting_shader_instanced: rl.Shader,
 	skybox_shader: rl.Shader,
-	teapot: rl.Model,
-	box: rl.Model,
 	boxes: [dynamic]Box,
 	mouse_captured: bool,
-	player_grounded: bool,
 	climb_points: [dynamic]Climb_Point,
 
 	atlas: rl.Texture2D,
 	plane_mesh: rl.Mesh,
-	plane: rl.Model,
+	box_mesh: rl.Mesh,
 
 	shadow_map: rl.RenderTexture2D,
 
@@ -74,8 +71,6 @@ Game_Memory :: struct {
 	default_mat_instanced: rl.Material,
 	shadowcasting_mat: rl.Material,
 	shadowcasting_mat_instanced: rl.Material,
-
-	cube: rl.Mesh,
 
 	debug_draw: bool,
 }
@@ -309,6 +304,7 @@ draw_skybox :: proc() {
 }
 
 draw_world :: proc(shadowcaster: bool) {
+	// boxes
 	{
 		box_transforms := make([dynamic]rl.Matrix, context.temp_allocator)
 		atlas_rects := make([dynamic]Rect, context.temp_allocator)
@@ -320,7 +316,7 @@ draw_world :: proc(shadowcaster: bool) {
 		}
 
 		mat := shadowcaster ? g_mem.shadowcasting_mat_instanced : g_mem.default_mat_instanced
-		draw_mesh_instanced(g_mem.box.meshes[0], mat, box_transforms[:], atlas_rects[:])
+		draw_mesh_instanced(g_mem.box_mesh, mat, box_transforms[:], atlas_rects[:])
 	}
 
 	rl.DrawSphere({0, 1, 0}, 0.1, rl.GREEN)
@@ -329,6 +325,7 @@ draw_world :: proc(shadowcaster: bool) {
 		rg.DisableBackfaceCulling()
 	}
 
+	// "npcs"
 	{
 		npc_transforms := make([dynamic]rl.Matrix, context.temp_allocator)
 		npc_rects := make([dynamic]Rect, context.temp_allocator)
@@ -397,6 +394,7 @@ draw :: proc() {
 	draw_skybox()
 
 	rl.SetShaderValue(g_mem.default_shader, rl.ShaderLocationIndex(g_mem.default_shader.locs[rl.ShaderLocationIndex.VECTOR_VIEW]), raw_data(&g_mem.player_pos), .VEC3)
+	rl.SetShaderValue(g_mem.default_shader_instanced, rl.ShaderLocationIndex(g_mem.default_shader_instanced.locs[rl.ShaderLocationIndex.VECTOR_VIEW]), raw_data(&g_mem.player_pos), .VEC3)
 
 	draw_world(false)
 
@@ -472,7 +470,7 @@ game_camera :: proc() -> rl.Camera {
 check_collision_boxes :: proc(b1: rl.BoundingBox, b2: rl.BoundingBox) -> bool {
 	collision := true
 
-	if (b1.max.x > b2.min.x) && (b1.min.x < b2.max.x)	{
+	if (b1.max.x > b2.min.x) && (b1.min.x < b2.max.x) {
 		if (b1.max.y <= b2.min.y) || (b1.min.y >= b2.max.y) {
 			collision = false
 		}
@@ -677,11 +675,9 @@ game_init :: proc() {
 		shadowcasting_shader = rl.LoadShader("shadowcaster.vs", "shadowcaster.fs"),
 		shadowcasting_shader_instanced = rl.LoadShader("shadowcaster_instanced.vs", "shadowcaster.fs"),
 		skybox_shader = rl.LoadShader("skybox.vs", "skybox.fs"),
-		teapot = rl.LoadModel("teapot.obj"),
-		box = rl.LoadModel("box.obj"),
 		atlas = rl.LoadTexture("atlas.png"),
 		plane_mesh = rl.GenMeshPlane(1, 1, 2, 2),
-		cube = rl.GenMeshCube(1, 1, 1),
+		box_mesh = rl.GenMeshCube(1, 1, 1),
 		shadow_map = create_shadowmap_rt(4096, 4096),
 	}
 
@@ -723,29 +719,10 @@ game_init :: proc() {
 	g_mem.shadowcasting_mat_instanced.maps[0].texture = g_mem.atlas
 	g_mem.shadowcasting_mat_instanced.shader = g_mem.shadowcasting_shader_instanced
 
-	g_mem.plane = rl.LoadModelFromMesh(g_mem.plane_mesh)
-
-	for midx in 0..<g_mem.plane.materialCount {
-		g_mem.plane.materials[midx].shader = g_mem.default_shader
-	}
-
-
 	ambient := Vec4{ 0.2, 0.2, 0.3, 1.0}
+
 	rl.SetShaderValue(g_mem.default_shader, rl.GetShaderLocation(g_mem.default_shader, "ambient"), raw_data(&ambient), .VEC4)
-
 	rl.SetShaderValue(g_mem.default_shader_instanced, rl.GetShaderLocation(g_mem.default_shader_instanced, "ambient"), raw_data(&ambient), .VEC4)
-
-	for midx in 0..<g_mem.teapot.materialCount {
-		g_mem.teapot.materials[midx].shader = g_mem.default_shader
-	}
-
-	for midx in 0..<g_mem.box.materialCount {
-		g_mem.box.materials[midx].shader = g_mem.default_shader
-		g_mem.box.materials[midx].maps[10].texture = g_mem.shadow_map.depth
-		g_mem.box.materials[midx].maps[rl.MaterialMapIndex.ALBEDO].color = rl.RED
-	}
-
-	//set_light(1, true, {0, 1, 0}, { 1,1,1, 1 }, false)
 
 	append(&g_mem.climb_points, Climb_Point {
 		pos = {0,  0.2, -10},
@@ -757,10 +734,10 @@ game_init :: proc() {
 		size = {5, 10, 20},
 	})
 
-	/*append(&g_mem.boxes, Box{
+	append(&g_mem.boxes, Box{
 		pos = {0, 4, 0},
-		size = {5, 1, 20},
-	})*/
+		size = {6, 1, 20},
+	})
 
 	append(&g_mem.boxes, Box{
 		pos = {0, -5, -11},
@@ -775,7 +752,6 @@ game_init :: proc() {
 	game_hot_reloaded(g_mem)
 }
 
-
 create_shadowmap_rt :: proc(widthi, heighti: int) -> rl.RenderTexture2D {
 	width := i32(widthi)
 	height := i32(heighti)
@@ -785,8 +761,7 @@ create_shadowmap_rt :: proc(widthi, heighti: int) -> rl.RenderTexture2D {
 	target.texture.width = width
 	target.texture.height = height
 
-	if (target.id > 0)
-	{
+	if target.id > 0 {
 		rg.EnableFramebuffer(target.id)
 
 		// Create depth texture
@@ -818,6 +793,7 @@ set_light :: proc(n: int, enabled: bool, pos: Vec3, color: Vec4, directional: bo
 	type := directional ? 0 : 1
 	pos := pos
 	color := color
+	
 	rl.SetShaderValue(g_mem.default_shader, rl.GetShaderLocation(g_mem.default_shader, fmt.ctprintf("lights[%v].enabled", n)), &enabled, .INT)
 	rl.SetShaderValue(g_mem.default_shader, rl.GetShaderLocation(g_mem.default_shader, fmt.ctprintf("lights[%v].type", n)), &type, .INT)
 	rl.SetShaderValue(g_mem.default_shader, rl.GetShaderLocation(g_mem.default_shader, fmt.ctprintf("lights[%v].position", n)), raw_data(&pos), .VEC3)

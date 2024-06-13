@@ -127,7 +127,7 @@ void main()
     }
     float viewDLen = length(viewPos - fragPosition);
 
-    float distance_darkening = remap(viewDLen, 2, 5, 0, 0.1);
+    float distance_darkening = remap(viewDLen, 2, 5, 0, 0.2);
 
     if (dot(normal, vec3(0, 1, 0)) > 0.5) {
     	lightDot *= 1 + distance_darkening+0.1;
