@@ -76,6 +76,8 @@ Game_Memory :: struct {
 	shadowcasting_mat_instanced: rl.Material,
 
 	cube: rl.Mesh,
+
+	debug_draw: bool,
 }
 
 g_mem: ^Game_Memory
@@ -307,42 +309,26 @@ draw_skybox :: proc() {
 }
 
 draw_world :: proc(shadowcaster: bool) {
-	//rl.DrawModelEx(g_mem.teapot, {0, -4.5, -14}, {0, 1, 0}, 90, {0.3, 0.3, 0.3}, rl.WHITE)
-
 	{
 		box_transforms := make([dynamic]rl.Matrix, context.temp_allocator)
-		npc_rects := make([dynamic]Rect, context.temp_allocator)
+		atlas_rects := make([dynamic]Rect, context.temp_allocator)
 
 		for b in g_mem.boxes {
 			m: rl.Matrix = auto_cast (linalg.matrix4_translate(b.pos) * linalg.matrix4_scale(b.size))
 			append(&box_transforms, m)
-			append(&npc_rects, Rect {})
+			append(&atlas_rects, Rect {})
 		}
 
 		mat := shadowcaster ? g_mem.shadowcasting_mat_instanced : g_mem.default_mat_instanced
-
-		draw_mesh_instanced(g_mem.box.meshes[0], mat, box_transforms[:], npc_rects[:])
-		//rl.DrawMeshInstanced(g_mem.box.meshes[0], mat, raw_data(box_transforms), i32(len(box_transforms)))
+		draw_mesh_instanced(g_mem.box.meshes[0], mat, box_transforms[:], atlas_rects[:])
 	}
 
 	rl.DrawSphere({0, 1, 0}, 0.1, rl.GREEN)
 
-/*	draw_billboard :: proc(pos: Vec3, texture: rl.Texture2D,  shadowcaster: bool) {
-		cam := game_camera()
+	if shadowcaster {
+		rg.DisableBackfaceCulling()
+	}
 
-		xz_cam_position := Vec3 {cam.position.x, 0, cam.position.z}
-		
-		cam_dir := linalg.normalize0(Vec3{pos.x, 0, pos.z} - xz_cam_position)
-		forward := Vec3{0, 0, -1}
-		yr := math.acos(linalg.dot(cam_dir, forward)) * math.sign(linalg.dot(cam_dir, Vec3{-1, 0, 0}))
-
-		squirrel_transf := linalg.matrix4_translate(pos) * linalg.matrix4_rotate(yr, Vec3{0, 1, 0}) * linalg.matrix4_rotate(math.TAU/4, Vec3{1, 0, 0}) * linalg.matrix4_scale(Vec3{1, 0.01, 1})
-		g_mem.squirrel_mat.maps[0].texture = texture
-		g_mem.shadowcaster_mat_squirrel.maps[0].texture = texture
-		rl.DrawMesh(g_mem.plane_mesh, shadowcaster ? g_mem.shadowcaster_mat_squirrel : g_mem.squirrel_mat, auto_cast squirrel_transf)
-	}*/
-
-	rg.DisableBackfaceCulling()
 	{
 		npc_transforms := make([dynamic]rl.Matrix, context.temp_allocator)
 		npc_rects := make([dynamic]Rect, context.temp_allocator)
@@ -365,19 +351,23 @@ draw_world :: proc(shadowcaster: bool) {
 		append(&npc_rects, atlas_textures[.Cat].rect)
 
 		mat := shadowcaster ? g_mem.shadowcasting_mat_instanced : g_mem.default_mat_instanced
-
 		draw_mesh_instanced(g_mem.plane_mesh, mat, npc_transforms[:], npc_rects[:])
 	}
-	rg.EnableBackfaceCulling()
+
+	if shadowcaster {
+		rg.EnableBackfaceCulling()
+	}
 }
 
 draw :: proc() {
 	rl.BeginDrawing()
 
+	// Draw into shadowmap
+
 	rl.BeginTextureMode(g_mem.shadow_map)
 	rl.ClearBackground(rl.WHITE)
 
-	lightCam := rl.Camera3D {
+	light_cam := rl.Camera3D {
 		position = light_pos + g_mem.player_pos,
 		target = g_mem.player_pos,
 		up = {0, 1, 0},
@@ -385,39 +375,25 @@ draw :: proc() {
 		projection = .ORTHOGRAPHIC,
 	}
 
-	rl.BeginMode3D(lightCam)
-	lightView := rg.GetMatrixModelview()
-	lightProj := rg.GetMatrixProjection()
+	rl.BeginMode3D(light_cam)
+	light_view := rg.GetMatrixModelview()
+	light_proj := rg.GetMatrixProjection()
 	draw_world(true)
 	rl.EndMode3D()
 	rl.EndTextureMode()
 
-	lightVPLoc := rl.GetShaderLocation(g_mem.default_shader, "lightVP")
-	lightViewProj := lightProj * lightView
+	// Shadowmap done. Draw normally and use shadows!
 
+	light_vp_loc := rl.GetShaderLocation(g_mem.default_shader, "lightVP")
+	light_view_proj := light_proj * light_view
 
-	rl.SetShaderValueMatrix(g_mem.default_shader, lightVPLoc, lightViewProj)
-	rl.SetShaderValueMatrix(g_mem.default_shader_instanced, lightVPLoc, lightViewProj)
+	rl.SetShaderValueMatrix(g_mem.default_shader, light_vp_loc, light_view_proj)
+	rl.SetShaderValueMatrix(g_mem.default_shader_instanced, light_vp_loc, light_view_proj)
 
 	rl.ClearBackground(rl.BLACK)
 
-	/*shadowMapLoc := rl.GetShaderLocation(g_mem.default_shader, "shadowMap")
-
-	//rg.EnableTexture(g_mem.shadow_map.depth.id)
-
-	slot := 1 // Can be anything 0 to 15, but 0 will probably be taken up
-	rg.ActiveTextureSlot(1)
-	rg.EnableTexture(g_mem.shadow_map.depth.id)
-	rg.SetUniform(i32(shadowMapLoc), &slot, i32(rl.ShaderUniformDataType.INT), 1)*/
-
-	/*shadowMapLoc := rl.GetShaderLocation(g_mem.default_shader, "shadowMap")
-	rl.SetShaderValueTexture(g_mem.default_shader, shadowMapLoc, g_mem.shadow_map.depth)*/
-
-//	rl.SetShaderValue(g_mem.default_shader, GetShaderLocation(g_mem.default_shader, "shadowMapResolution"), &shadowMapResolution, SHADER_UNIFORM_INT);
-
 	cam := game_camera()
 	rl.BeginMode3D(cam)
-	//rl.BeginShaderMode(g_mem.default_shader)
 	draw_skybox()
 
 	rl.SetShaderValue(g_mem.default_shader, rl.ShaderLocationIndex(g_mem.default_shader.locs[rl.ShaderLocationIndex.VECTOR_VIEW]), raw_data(&g_mem.player_pos), .VEC3)
@@ -446,25 +422,23 @@ draw :: proc() {
 			}
 		}
 	}
-
-	//rl.DrawModelEx(g_mem.plane, {0, 0.5, -5}, {1, 0, 0}, 90, {1,1,1}, rl.WHITE)
-	//rl.DrawBillboard(cam, g_mem.squirrel, {0, 0.5, -5}, 1, rl.WHITE)
 		
-	//rl.EndShaderMode()
 	rl.EndMode3D()
 
 	rl.DrawCircleV(screen_mid, 5, crosshair_color)
 
-	//rl.DrawTextureEx(g_mem.shadow_map.depth, {}, 0, 0.1, rl.WHITE)
+	if g_mem.debug_draw {
+		rl.DrawTextureEx(g_mem.shadow_map.depth, {}, 0, 0.1, rl.WHITE)
+	}
 
 	rl.EndDrawing()
 }
 
 @(export)
 game_update :: proc() -> bool {
-
-
-	//set_light(1, true, {0, 1, f32(math.cos(rl.GetTime()))*10 }, { 1,1,1, 1 }, false)
+	if rl.IsKeyPressed(.F3) {
+		g_mem.debug_draw = !g_mem.debug_draw
+	}
 
 	update()
 	draw()
@@ -498,8 +472,7 @@ game_camera :: proc() -> rl.Camera {
 check_collision_boxes :: proc(b1: rl.BoundingBox, b2: rl.BoundingBox) -> bool {
 	collision := true
 
-	if ((b1.max.x > b2.min.x) && (b1.min.x < b2.max.x))
-	{
+	if (b1.max.x > b2.min.x) && (b1.min.x < b2.max.x)	{
 		if (b1.max.y <= b2.min.y) || (b1.min.y >= b2.max.y) {
 			collision = false
 		}
