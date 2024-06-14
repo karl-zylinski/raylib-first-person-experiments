@@ -5,7 +5,7 @@ if "%1"=="skip_atlas_builder" goto skip_atlas_builder
 odin build atlas_builder -use-separate-modules -define:RAYLIB_SHARED=true
 IF %ERRORLEVEL% NEQ 0 exit /b 1
 
-rem atlas_builder.exe
+atlas_builder.exe
 IF %ERRORLEVEL% NEQ 0 exit /b 1
 
 rem :skip_atlas_builder

@@ -9,7 +9,7 @@ import "core:slice"
 import "core:strings"
 import "core:time"
 import "core:unicode/utf8"
-import "vendor:stb/rect_pack"
+import "rect_pack"
 import ase "aseprite"
 import rl "vendor:raylib"
 
@@ -341,9 +341,9 @@ main :: proc() {
 		}
 	}
 
-	rc: rect_pack.Context
+	rc: rect_pack.PackContext
 	rc_nodes: [AtlasSize]rect_pack.Node
-	rect_pack.init_target(&rc, AtlasSize, AtlasSize, raw_data(rc_nodes[:]), AtlasSize)
+	rect_pack.init_target(&rc, AtlasSize, AtlasSize, rc_nodes[:])
 
 	letters := utf8.string_to_runes(LettersInFont)
 	num_letters := len(letters)
@@ -456,7 +456,7 @@ main :: proc() {
 		h = 11,
 	})
 
-	rect_pack_res := rect_pack.pack_rects(&rc, raw_data(pack_rects), i32(len(pack_rects)))
+	rect_pack_res := rect_pack.pack_rects(&rc, pack_rects[:])
 
 	if rect_pack_res != 1 {
 		fmt.println("failed to pack some rects")

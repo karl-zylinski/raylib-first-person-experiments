@@ -1,7 +1,8 @@
 short term:
 X make shadowcaster not use big shadowing fragment shader
-- instancing
-- texture atlas
+x instancing
+x texture atlas
+- try the 
 
 long term:
 - navmesh baker
