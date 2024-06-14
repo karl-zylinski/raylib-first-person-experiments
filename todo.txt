@@ -2,7 +2,7 @@ short term:
 X make shadowcaster not use big shadowing fragment shader
 x instancing
 x texture atlas
-- try the 
+- replace shaders and materials from raylib with something more explicit and adapt draw_mesh_instanced
 
 long term:
 - navmesh baker
