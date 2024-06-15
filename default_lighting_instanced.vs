@@ -9,7 +9,7 @@ layout(location=6) in mat4 instance_transform;
 layout(location=10)in vec4 instance_uv_remap;
 
 // Input uniform values
-uniform mat4 mvp;
+uniform mat4 transf_mvp;
 
 // Output vertex attributes (to fragment shader)
 out vec3 frag_world_pos;
@@ -38,5 +38,5 @@ void main() {
     frag_normal = normalize(vec3(normal_matrix*vec4(vertex_normal, 1.0)));
 
     // Calculate final vertex position
-    gl_Position = mvp*instance_transform*vec4(vertex_position, 1.0);
+    gl_Position = transf_mvp*instance_transform*vec4(vertex_position, 1.0);
 }

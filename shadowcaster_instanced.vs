@@ -5,7 +5,7 @@ layout(location=1) in vec2 vertex_texcoord;
 
 layout(location=6) in mat4 instance_transform;
 layout(location=10)in vec4 instance_uv_remap;
-uniform mat4 mvp;
+uniform mat4 transf_mvp;
 
 out vec2 frag_texcoord;
 
@@ -22,5 +22,5 @@ void main()
 {
     frag_texcoord.x = remap(vertex_texcoord.x, 0, 1, instance_uv_remap.x, instance_uv_remap.y);
     frag_texcoord.y = remap(vertex_texcoord.y, 0, 1, instance_uv_remap.z, instance_uv_remap.w);
-	gl_Position = mvp*instance_transform*vec4(vertex_position, 1.0);
+	gl_Position = transf_mvp*instance_transform*vec4(vertex_position, 1.0);
 }

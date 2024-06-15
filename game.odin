@@ -5,6 +5,8 @@ import "core:fmt"
 import rl "vendor:raylib"
 import rg "vendor:raylib/rlgl"
 import "core:math"
+import "core:os"
+import "core:c"
 
 _ :: linalg
 _ :: fmt
@@ -58,9 +60,8 @@ Game_Memory :: struct {
 	player: Player,
 	time: f64,
 	default_shader: rl.Shader,
-	default_shader_instanced: rl.Shader,
-	shadowcasting_shader: rl.Shader,
-	shadowcasting_shader_instanced: rl.Shader,
+	default_shader_instanced: Shader,
+	shadowcasting_shader_instanced: Shader,
 	skybox_shader: rl.Shader,
 	boxes: [dynamic]Box,
 	mouse_captured: bool,
@@ -113,7 +114,7 @@ update :: proc() -> Frame_State {
 
 	// Rotate light
 	// light_pos = {20*f32(math.cos(rl.GetTime())), 20, -20*f32(math.sin(rl.GetTime()))}
-	set_light(0, true, light_pos, { 1, 1, 1, 1 }, true)
+
 	dt = min(rl.GetFrameTime(), 0.033)
 	g_mem.time += f64(dt)
 
@@ -342,7 +343,7 @@ draw_skybox :: proc() {
 	rl.EndShaderMode()
 }
 
-draw_world :: proc(shadowcaster: bool) {
+draw_world :: proc(shader: Shader, shader_params: Shader_Parameters, disable_backface_culling: bool) {
 	// boxes
 	{
 		box_transforms := make([dynamic]rl.Matrix, context.temp_allocator)
@@ -354,11 +355,10 @@ draw_world :: proc(shadowcaster: bool) {
 			append(&atlas_rects, Rect {})
 		}
 
-		mat := shadowcaster ? g_mem.shadowcasting_mat_instanced : g_mem.default_mat_instanced
-		draw_mesh_instanced(g_mem.box_mesh, mat, box_transforms[:], atlas_rects[:])
+		draw_mesh_instanced(g_mem.box_mesh, shader, shader_params, box_transforms[:], atlas_rects[:])
 	}
 
-	if shadowcaster {
+	if disable_backface_culling {
 		rg.DisableBackfaceCulling()
 	}
 
@@ -384,16 +384,28 @@ draw_world :: proc(shadowcaster: bool) {
 		append(&npc_transforms, get_npc_transform({2, 0.5, -5}))
 		append(&npc_rects, atlas_textures[.Cat].rect)
 
-		mat := shadowcaster ? g_mem.shadowcasting_mat_instanced : g_mem.default_mat_instanced
-		draw_mesh_instanced(g_mem.plane_mesh, mat, npc_transforms[:], npc_rects[:])
+		draw_mesh_instanced(g_mem.plane_mesh, shader, shader_params, npc_transforms[:], npc_rects[:])
 	}
 
-	if shadowcaster {
+	if disable_backface_culling {
 		rg.EnableBackfaceCulling()
 	}
 }
 
 draw :: proc(fs: Frame_State) {
+	shader_params := Shader_Parameters {
+		albedo = rl.WHITE,
+		atlas = g_mem.atlas,
+		shadow_map = g_mem.shadow_map.depth,
+		lights = {
+			0 = {
+				type = .Directional,
+				position = light_pos,
+				color = rl.WHITE,
+			},
+		},
+	}
+
 	rl.BeginDrawing()
 
 	// Draw into shadowmap
@@ -412,27 +424,23 @@ draw :: proc(fs: Frame_State) {
 	rl.BeginMode3D(light_cam)
 	light_view := rg.GetMatrixModelview()
 	light_proj := rg.GetMatrixProjection()
-	draw_world(true)
+	draw_world(g_mem.shadowcasting_shader_instanced, shader_params, true)
 	rl.EndMode3D()
 	rl.EndTextureMode()
 
 	// Shadowmap done. Draw normally and use shadows!
 
-	light_view_proj := light_proj * light_view
-
-	rl.SetShaderValueMatrix(g_mem.default_shader, rl.GetShaderLocation(g_mem.default_shader, "light_vp"), light_view_proj)
-	rl.SetShaderValueMatrix(g_mem.default_shader_instanced, rl.GetShaderLocation(g_mem.default_shader_instanced, "light_vp"), light_view_proj)
+	shader_params.transf_light_vp = light_proj * light_view
 
 	rl.ClearBackground(rl.BLACK)
 
 	cam := game_camera()
+
+	shader_params.view_pos = cam.position
 	rl.BeginMode3D(cam)
 	draw_skybox()
 
-	rl.SetShaderValue(g_mem.default_shader, rl.ShaderLocationIndex(g_mem.default_shader.locs[rl.ShaderLocationIndex.VECTOR_VIEW]), raw_data(&g_mem.player.pos), .VEC3)
-	rl.SetShaderValue(g_mem.default_shader_instanced, rl.ShaderLocationIndex(g_mem.default_shader_instanced.locs[rl.ShaderLocationIndex.VECTOR_VIEW]), raw_data(&g_mem.player.pos), .VEC3)
-
-	draw_world(false)
+	draw_world(g_mem.default_shader_instanced, shader_params, false)
 
 	for c in g_mem.climb_points {
 		rl.DrawSphere(c.pos, 0.1, rl.RED)
@@ -444,7 +452,6 @@ draw :: proc(fs: Frame_State) {
 	rl.DrawCircleV(screen_mid, 5, fs.crosshair_color)
 
 	if g_mem.debug_draw {
-
 		rl.DrawTextureEx(g_mem.shadow_map.depth, {}, 0, 0.1, rl.WHITE)
 	}
 
@@ -522,48 +529,51 @@ bounding_box_overlap :: proc(b1: rl.BoundingBox, b2: rl.BoundingBox) -> (res: rl
 
 light_pos := Vec3{20, 20, -20}
 
-SHADER_LOCATION_UVS :: len(rg.ShaderLocationIndex)
+vec4_from_color :: proc(c: Color) -> Vec4 {
+	return {
+		f32(c.r)/255,
+		f32(c.g)/255,
+		f32(c.b)/255,
+		f32(c.a)/255,
+	}
+}
 
-draw_mesh_instanced :: proc(mesh: rl.Mesh, material: rl.Material, transforms: []rl.Matrix, atlas_rects: []Rect) {
-	rg.EnableShader(material.shader.id)
+draw_mesh_instanced :: proc(mesh: rl.Mesh, shader: Shader, params: Shader_Parameters, transforms: []rl.Matrix, atlas_rects: []Rect) {
+	assert(len(transforms) == len(atlas_rects))
+
+	rg.EnableShader(shader.id)
 
 	// Upload to shader material.colDiffuse
-	if material.shader.locs[rg.ShaderLocationIndex.COLOR_DIFFUSE] != -1 {
-		values := [4]f32 {
-			f32(material.maps[rl.MaterialMapIndex.ALBEDO].color.r)/255,
-			f32(material.maps[rl.MaterialMapIndex.ALBEDO].color.g)/255,
-			f32(material.maps[rl.MaterialMapIndex.ALBEDO].color.b)/255,
-			f32(material.maps[rl.MaterialMapIndex.ALBEDO].color.a)/255,
-		}
-
-		rg.SetUniform(material.shader.locs[rg.ShaderLocationIndex.COLOR_DIFFUSE], raw_data(&values), i32(rg.ShaderUniformDataType.VEC4), 1)
+	if shader.uniform_locations[.Color_Diffuse] != UNIFORM_LOCATION_NONE {
+		color := vec4_from_color(params.albedo)
+		rg.SetUniform(shader.uniform_locations[.Color_Diffuse], raw_data(&color), i32(rg.ShaderUniformDataType.VEC4), 1)
 	}
 
-	// Upload to shader material.colSpecular (if location available)
-	if material.shader.locs[rg.ShaderLocationIndex.COLOR_SPECULAR] != -1 {
-		values := [4]f32 {
-			f32(material.maps[rl.ShaderLocationIndex.COLOR_SPECULAR].color.r)/255,
-			f32(material.maps[rl.ShaderLocationIndex.COLOR_SPECULAR].color.g)/255,
-			f32(material.maps[rl.ShaderLocationIndex.COLOR_SPECULAR].color.b)/255,
-			f32(material.maps[rl.ShaderLocationIndex.COLOR_SPECULAR].color.a)/255,
-		}
-
-		rg.SetUniform(material.shader.locs[rg.ShaderLocationIndex.COLOR_SPECULAR], raw_data(&values), i32(rl.ShaderUniformDataType.VEC4), 1)
+	for l, i in params.lights {
+		type := i32(l.type)
+		color := vec4_from_color(l.color)
+		pos := l.position
+		rg.SetUniform(rg.GetLocationUniform(shader.id, fmt.ctprintf("lights[%v].type", i)), &type, i32(rg.ShaderUniformDataType.INT), 1)
+		rg.SetUniform(rg.GetLocationUniform(shader.id, fmt.ctprintf("lights[%v].position", i)), &pos, i32(rg.ShaderUniformDataType.VEC3), 1)
+		rg.SetUniform(rg.GetLocationUniform(shader.id, fmt.ctprintf("lights[%v].color", i)), &color, i32(rg.ShaderUniformDataType.VEC4), 1)
 	}
 
 	// Populate uniform matrices
 	mat_view := rg.GetMatrixModelview()
 	mat_projection := rg.GetMatrixProjection()
 
-	if material.shader.locs[rg.ShaderLocationIndex.MATRIX_VIEW] != -1 {
-		rg.SetUniformMatrix(material.shader.locs[rg.ShaderLocationIndex.MATRIX_VIEW], mat_view)
+	if loc := shader.uniform_locations[.Transform_View]; loc != UNIFORM_LOCATION_NONE {
+		rg.SetUniformMatrix(loc, mat_view)
 	}
 
-	if material.shader.locs[rg.ShaderLocationIndex.MATRIX_PROJECTION] != -1 {
-		rg.SetUniformMatrix(material.shader.locs[rg.ShaderLocationIndex.MATRIX_PROJECTION], mat_projection)
+	if loc := shader.uniform_locations[.Light_View_Projection]; loc != UNIFORM_LOCATION_NONE {
+		rg.SetUniformMatrix(loc, params.transf_light_vp)
 	}
 
-	assert(len(transforms) == len(atlas_rects))
+	if loc := shader.uniform_locations[.Position_Camera]; loc != UNIFORM_LOCATION_NONE {
+		pos := params.view_pos
+		rg.SetUniform(loc, &pos, i32(rg.ShaderUniformDataType.VEC3), 1)
+	}
 
 	// Create instance buffers
 	instance_transforms := make([][16]f32, len(transforms), context.temp_allocator)
@@ -614,38 +624,37 @@ draw_mesh_instanced :: proc(mesh: rl.Mesh, material: rl.Material, transforms: []
 	rg.DisableVertexArray()
 
 	// Upload model normal matrix (if locations available)
-	if material.shader.locs[rg.ShaderLocationIndex.MATRIX_NORMAL] != -1 {
-		rg.SetUniformMatrix(material.shader.locs[rg.ShaderLocationIndex.MATRIX_NORMAL], rl.MatrixTranspose(rl.MatrixInvert(rg.GetMatrixTransform())))
+	if loc := shader.uniform_locations[.Transform_Normal]; loc != UNIFORM_LOCATION_NONE {
+		rg.SetUniformMatrix(loc, rl.MatrixTranspose(rl.MatrixInvert(rg.GetMatrixTransform())))
 	}
 
-	// Bind active texture maps (if available)
-
-	// copied from rconfig.h
-	MAX_MATERIAL_MAPS :: 12
-
-	for ii in 0..<MAX_MATERIAL_MAPS {
-		i := i32(ii)
-
-		if material.maps[i].texture.id > 0 {
-			// Select current shader texture slot
-			rg.ActiveTextureSlot(i)
-
-			// Enable texture for active slot
-			mi := rl.MaterialMapIndex(i)
-			if mi == rl.MaterialMapIndex.IRRADIANCE || mi == rl.MaterialMapIndex.PREFILTER || mi == rl.MaterialMapIndex.CUBEMAP {
-				rg.EnableTextureCubemap(material.maps[i].texture.id)
-			} else {
-				rg.EnableTexture(material.maps[i].texture.id)
-			}
-
-			rg.SetUniform(material.shader.locs[i32(rg.ShaderLocationIndex.MAP_ALBEDO) + i], &i, i32(rg.ShaderUniformDataType.INT), 1)
+	set_texture :: proc(shader: Shader, name: Texture_Name, tex: rl.Texture) {
+		if tex.id == 0 {
+			return
 		}
+
+		loc := shader.texture_locations[name]
+
+		if loc == UNIFORM_LOCATION_NONE {
+			return
+		}
+
+		i := c.int(name)
+		rg.ActiveTextureSlot(i)
+		rg.EnableTexture(tex.id)
+		rg.SetUniform(loc, &i, i32(rg.ShaderUniformDataType.INT), 1)
 	}
+
+	set_texture(shader, .Atlas, params.atlas)
+	set_texture(shader, .Shadow_Map, params.shadow_map)
 
 	rg.EnableVertexArray(mesh.vaoId)
 
 	mat_view_projection := mat_projection * mat_view * rg.GetMatrixTransform()
-	rg.SetUniformMatrix(material.shader.locs[rl.ShaderLocationIndex.MATRIX_MVP], mat_view_projection)
+
+	if loc := shader.uniform_locations[.Transform_Model_View_Projection]; loc != UNIFORM_LOCATION_NONE {
+		rg.SetUniformMatrix(loc, mat_view_projection)
+	}
 
 	// Draw mesh instanced
 	if mesh.indices != nil {
@@ -654,21 +663,10 @@ draw_mesh_instanced :: proc(mesh: rl.Mesh, material: rl.Material, transforms: []
 		rg.DrawVertexArrayInstanced(0, mesh.vertexCount, i32(len(transforms)))
 	}
 
-	// Unbind all bound texture maps
-	for ii in 0..<MAX_MATERIAL_MAPS {
+	for ii in 0..<len(Texture_Name) {
 		i := i32(ii)
-		if material.maps[i].texture.id > 0 {
-			// Select current shader texture slot
-			rg.ActiveTextureSlot(i)
-
-			// Disable texture for active slot
-			mi := rl.MaterialMapIndex(i)
-			if mi == rl.MaterialMapIndex.IRRADIANCE || mi == rl.MaterialMapIndex.PREFILTER || mi == rl.MaterialMapIndex.CUBEMAP {
-				rg.DisableTextureCubemap()
-			} else {
-				rg.DisableTexture()
-			}
-		}
+		rg.ActiveTextureSlot(i)
+		rg.DisableTexture()
 	}
 
 	// Disable all possible vertex array objects (or VBOs)
@@ -686,10 +684,91 @@ draw_mesh_instanced :: proc(mesh: rl.Mesh, material: rl.Material, transforms: []
 
 SHADER_ATTRIB_LOCATION_VERTEX_POSITION    :: 0
 SHADER_ATTRIB_LOCATION_VERTEX_TEXCOORD    :: 1
-SHADER_ATTRIB_LOCATION_VERTEX_NORMAL      :: 3
-SHADER_ATTRIB_LOCATION_VERTEX_COLOR       :: 4
+SHADER_ATTRIB_LOCATION_VERTEX_NORMAL      :: 2
+SHADER_ATTRIB_LOCATION_VERTEX_COLOR       :: 3
+SHADER_ATTRIB_LOCATION_VERTEX_TANGENT     :: 4
+SHADER_ATTRIB_LOCATION_VERTEX_TEXCOORD2   :: 5
 SHADER_ATTRIB_LOCATION_INSTANCE_TRANSFORM :: 6
 SHADER_ATTRIB_LOCATION_INSTANCE_UV_REMAP  :: 10
+
+Uniform_Name :: enum {
+	Transform_Model,
+	Transform_Model_View_Projection,
+	Transform_View_Projection,
+	Transform_View,
+	Transform_Normal,
+	Color_Diffuse,
+	Position_Camera,
+	Light_View_Projection,
+}
+
+Texture_Name :: enum {
+	Atlas,
+	Shadow_Map,
+}
+
+Shader :: struct {
+	id: c.uint,
+	uniform_locations: [Uniform_Name]c.int,
+	texture_locations: [Texture_Name]c.int,
+}
+
+Light_Type :: enum {
+	None,
+	Directional,
+	Point,
+}
+
+Shader_Light :: struct {
+	type: Light_Type,
+	position: Vec3,
+	color: rl.Color,
+}
+
+Shader_Parameters :: struct {
+	albedo: rl.Color,
+	atlas: rl.Texture,
+	shadow_map: rl.Texture,
+	view_pos: Vec3,
+	transf_light_vp: rl.Matrix,
+	lights: [4]Shader_Light,
+}
+
+
+UNIFORM_LOCATION_NONE :: -1
+
+load_shader :: proc(vs_name: string, fs_name: string) -> Shader {
+	vs_shader: c.uint
+
+	if vs, ok := os.read_entire_file(vs_name, context.temp_allocator); ok {
+		vs_shader = rg.CompileShader(temp_cstring(string(vs)), rg.VERTEX_SHADER)
+	}
+
+	fs_shader: c.uint
+	if fs, ok := os.read_entire_file(fs_name, context.temp_allocator); ok {
+		fs_shader = rg.CompileShader(temp_cstring(string(fs)), rg.FRAGMENT_SHADER)
+	}
+
+	s: Shader
+	s.id = rg.LoadShaderProgram(vs_shader, fs_shader)
+	s.uniform_locations = {
+		.Transform_Model_View_Projection = rg.GetLocationUniform(s.id, "transf_mvp"),
+		.Transform_Model = rg.GetLocationUniform(s.id, "transf_model"),
+		.Transform_View_Projection = rg.GetLocationUniform(s.id, "transf_vp"),
+		.Transform_View = rg.GetLocationUniform(s.id, "transf_view"),
+		.Transform_Normal = rg.GetLocationUniform(s.id, "transf_normal"),
+		.Color_Diffuse = rg.GetLocationUniform(s.id, "color_diffuse"),
+		.Position_Camera = rg.GetLocationUniform(s.id, "position_camera"),
+		.Light_View_Projection = rg.GetLocationUniform(s.id, "transf_light_vp"),
+	}
+
+	s.texture_locations = {
+		.Atlas = rg.GetLocationUniform(s.id, "tex_atlas"),
+		.Shadow_Map = rg.GetLocationUniform(s.id, "tex_shadow_map"),
+	}
+
+	return s
+}
 
 @(export)
 game_init :: proc() {
@@ -699,80 +778,14 @@ game_init :: proc() {
 		player = {
 			pos = {2, 2, -3},
 		},
-		default_shader = rl.LoadShader("default_lighting.vs", "default_lighting.fs"),
-		default_shader_instanced = rl.LoadShader("default_lighting_instanced.vs", "default_lighting.fs"),
-		shadowcasting_shader = rl.LoadShader("shadowcaster.vs", "shadowcaster.fs"),
-		shadowcasting_shader_instanced = rl.LoadShader("shadowcaster_instanced.vs", "shadowcaster.fs"),
+		shadowcasting_shader_instanced = load_shader("shadowcaster_instanced.vs", "shadowcaster.fs"),
+		default_shader_instanced = load_shader("default_lighting_instanced.vs", "default_lighting.fs"),
 		skybox_shader = rl.LoadShader("skybox.vs", "skybox.fs"),
 		atlas = rl.LoadTexture("atlas.png"),
 		plane_mesh = rl.GenMeshPlane(1, 1, 2, 2),
 		box_mesh = rl.GenMeshCube(1, 1, 1),
 		shadow_map = create_shadowmap_rt(4096, 4096),
 	}
-/*
-Uniform_Name :: enum {
-	Matrix_Model_View_Projection,
-	Matrix_View_Projection,
-	Matrix_View,
-	Matrix_Normal,
-}
-
-Shader :: struct {
-	id: c.uint,
-	uniforms: [Uniform_Name]c.int,
-}
-	load_shader :: proc(vs_name: string, fs_name: string) -> Shader {
-		vs_shader: c.int
-
-		if vs, ok := os.read_entire_file(vs_name); ok {
-			vs_shader = rg.CompileShader(temp_cstring(string(vs)), rg.VERTEX_SHADER)
-		}
-
-		fs_shader: c.int
-		if fs, ok := os.read_entire_file(fs_name); ok {
-			fs_shader = rg.CompileShader(temp_cstring(string(fs)), rg.VERTEX_SHADER)
-		}
-
-		rg.LoadShaderCode(vs_code, fs_code)
-
-		s: Shader
-		s.id = rg.LoadShaderProgram(vs_shader, fs_shader)
-		s.uniforms = {
-			.Matrix_Model_View_Projection = rl.
-		}
-	}*/
-
-	set_shader_location :: proc(s: ^rl.Shader, #any_int index: i32, name: cstring) {
-		s.locs[index] = rl.GetShaderLocation(s^, name)
-	}
-
-	set_shader_location(&g_mem.default_shader, rl.ShaderLocationIndex.VECTOR_VIEW, "view_pos")
-	set_shader_location(&g_mem.default_shader, i32(rl.ShaderLocationIndex.MAP_ALBEDO) + 10, "shadow_map")
-
-	set_shader_location(&g_mem.default_shader_instanced, rl.ShaderLocationIndex.VECTOR_VIEW, "view_pos")
-	set_shader_location(&g_mem.default_shader_instanced, i32(rl.ShaderLocationIndex.MAP_ALBEDO) + 10, "shadow_map")
-
-	g_mem.default_mat = rl.LoadMaterialDefault()
-	g_mem.default_mat.shader = g_mem.default_shader
-	g_mem.default_mat.maps[0].texture = g_mem.atlas
-	g_mem.default_mat.maps[10].texture = g_mem.shadow_map.depth
-
-	g_mem.default_mat_instanced = rl.LoadMaterialDefault()
-	g_mem.default_mat_instanced.shader = g_mem.default_shader_instanced
-	g_mem.default_mat_instanced.maps[0].texture = g_mem.atlas
-	g_mem.default_mat_instanced.maps[10].texture = g_mem.shadow_map.depth
-
-	g_mem.shadowcasting_mat = rl.LoadMaterialDefault()
-	g_mem.shadowcasting_mat.shader = g_mem.shadowcasting_shader
-
-	g_mem.shadowcasting_mat_instanced = rl.LoadMaterialDefault()
-	g_mem.shadowcasting_mat_instanced.maps[0].texture = g_mem.atlas
-	g_mem.shadowcasting_mat_instanced.shader = g_mem.shadowcasting_shader_instanced
-
-	ambient := Vec4{ 0.2, 0.2, 0.3, 1.0}
-
-	rl.SetShaderValue(g_mem.default_shader, rl.GetShaderLocation(g_mem.default_shader, "ambient"), raw_data(&ambient), .VEC4)
-	rl.SetShaderValue(g_mem.default_shader_instanced, rl.GetShaderLocation(g_mem.default_shader_instanced, "ambient"), raw_data(&ambient), .VEC4)
 
 	append(&g_mem.climb_points, Climb_Point {
 		pos = {0,  0.2, -10},
@@ -836,23 +849,6 @@ create_shadowmap_rt :: proc(widthi, heighti: int) -> rl.RenderTexture2D {
 	}
 
 	return target
-}
-
-set_light :: proc(n: int, enabled: bool, pos: Vec3, color: Vec4, directional: bool) {
-	enabled := int(enabled)
-	type := directional ? 0 : 1
-	pos := pos
-	color := color
-
-	rl.SetShaderValue(g_mem.default_shader, rl.GetShaderLocation(g_mem.default_shader, fmt.ctprintf("lights[%v].enabled", n)), &enabled, .INT)
-	rl.SetShaderValue(g_mem.default_shader, rl.GetShaderLocation(g_mem.default_shader, fmt.ctprintf("lights[%v].type", n)), &type, .INT)
-	rl.SetShaderValue(g_mem.default_shader, rl.GetShaderLocation(g_mem.default_shader, fmt.ctprintf("lights[%v].position", n)), raw_data(&pos), .VEC3)
-	rl.SetShaderValue(g_mem.default_shader, rl.GetShaderLocation(g_mem.default_shader, fmt.ctprintf("lights[%v].color", n)), raw_data(&color), .VEC4)
-
-	rl.SetShaderValue(g_mem.default_shader_instanced, rl.GetShaderLocation(g_mem.default_shader_instanced, fmt.ctprintf("lights[%v].enabled", n)), &enabled, .INT)
-	rl.SetShaderValue(g_mem.default_shader_instanced, rl.GetShaderLocation(g_mem.default_shader_instanced, fmt.ctprintf("lights[%v].type", n)), &type, .INT)
-	rl.SetShaderValue(g_mem.default_shader_instanced, rl.GetShaderLocation(g_mem.default_shader_instanced, fmt.ctprintf("lights[%v].position", n)), raw_data(&pos), .VEC3)
-	rl.SetShaderValue(g_mem.default_shader_instanced, rl.GetShaderLocation(g_mem.default_shader_instanced, fmt.ctprintf("lights[%v].color", n)), raw_data(&color), .VEC4)
 }
 
 @(export)
