@@ -939,7 +939,7 @@ game_init :: proc() {
 
 	append(&g_mem.boxes, Box{
 		pos = {0, 0, -3},
-		size = {0.5, 5, 0.5},
+		size = {0.5, 10, 0.5},
 	})
 
 	game_hot_reloaded(g_mem)
