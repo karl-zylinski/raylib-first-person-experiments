@@ -13,8 +13,8 @@ out vec4 out_color;
 
 struct Light {
 	int type;
+	vec3 direction;
 	vec3 position;
-	vec3 target;
 	vec4 color;
 };
 
@@ -56,7 +56,7 @@ void main() {
 			float falloff = 0;
 
 			if (lights[i].type == LIGHT_DIRECTIONAL) {
-				light = -normalize(lights[i].target - lights[i].position);
+				light = -normalize(lights[i].direction);
 				directional_light_dir = light;
 			}
 

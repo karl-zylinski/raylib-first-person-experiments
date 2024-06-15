@@ -400,7 +400,7 @@ draw :: proc(fs: Frame_State) {
 		lights = {
 			0 = {
 				type = .Directional,
-				position = light_pos,
+				direction = Vec3{0,0,0}-light_pos,
 				color = rl.WHITE,
 			},
 		},
@@ -550,12 +550,53 @@ draw_mesh_instanced :: proc(mesh: rl.Mesh, shader: Shader, params: Shader_Parame
 	}
 
 	for l, i in params.lights {
+		type_loc, direction_loc, position_loc, color_loc: c.int
+
+		switch i {
+			case 0:
+				type_loc = shader.uniform_locations[.Light_0_Type]
+				direction_loc = shader.uniform_locations[.Light_0_Direction]
+				position_loc = shader.uniform_locations[.Light_0_Position]
+				color_loc = shader.uniform_locations[.Light_0_Color]
+
+			case 1:
+				type_loc = shader.uniform_locations[.Light_1_Type]
+				direction_loc = shader.uniform_locations[.Light_1_Direction]
+				position_loc = shader.uniform_locations[.Light_1_Position]
+				color_loc = shader.uniform_locations[.Light_1_Color]
+
+			case 2:
+				type_loc = shader.uniform_locations[.Light_2_Type]
+				direction_loc = shader.uniform_locations[.Light_2_Direction]
+				position_loc = shader.uniform_locations[.Light_2_Position]
+				color_loc = shader.uniform_locations[.Light_2_Color]
+
+			case 3:
+				type_loc = shader.uniform_locations[.Light_3_Type]
+				direction_loc = shader.uniform_locations[.Light_3_Direction]
+				position_loc = shader.uniform_locations[.Light_3_Position]
+				color_loc = shader.uniform_locations[.Light_3_Color]
+		}
+
+		if type_loc == -1 || direction_loc == -1 || position_loc == -1 || color_loc == -1 {
+			continue
+		}
+
 		type := i32(l.type)
 		color := vec4_from_color(l.color)
-		pos := l.position
-		rg.SetUniform(rg.GetLocationUniform(shader.id, fmt.ctprintf("lights[%v].type", i)), &type, i32(rg.ShaderUniformDataType.INT), 1)
-		rg.SetUniform(rg.GetLocationUniform(shader.id, fmt.ctprintf("lights[%v].position", i)), &pos, i32(rg.ShaderUniformDataType.VEC3), 1)
-		rg.SetUniform(rg.GetLocationUniform(shader.id, fmt.ctprintf("lights[%v].color", i)), &color, i32(rg.ShaderUniformDataType.VEC4), 1)
+		rg.SetUniform(type_loc, &type, i32(rg.ShaderUniformDataType.INT), 1)
+
+		switch l.type {
+			case .None:
+			case .Directional:
+				dir := l.direction
+				rg.SetUniform(direction_loc, &dir, i32(rg.ShaderUniformDataType.VEC3), 1)
+			case .Point:
+				pos := l.position
+				rg.SetUniform(position_loc, &pos, i32(rg.ShaderUniformDataType.VEC3), 1)
+		}
+		
+		rg.SetUniform(color_loc, &color, i32(rg.ShaderUniformDataType.VEC4), 1)
 	}
 
 	// Populate uniform matrices
@@ -606,7 +647,7 @@ draw_mesh_instanced :: proc(mesh: rl.Mesh, shader: Shader, params: Shader_Parame
 
 	// Instances transformation matrices are send to shader attribute location: SHADER_LOC_MATRIX_MODEL
 	for i in 0..<4 {
-		loc := u32(SHADER_ATTRIB_LOCATION_INSTANCE_TRANSFORM + i)
+		loc := u32(Shader_Attribute_Location.Instance_Transform_0) + u32(i)
 		rg.EnableVertexAttribute(loc)
 		offset := transmute(rawptr)(uintptr(i*size_of([4]f32)))
 		rg.SetVertexAttribute(loc, 4, rg.FLOAT, false, size_of(rl.Matrix), offset)
@@ -616,9 +657,10 @@ draw_mesh_instanced :: proc(mesh: rl.Mesh, shader: Shader, params: Shader_Parame
 	rg.DisableVertexBuffer()
 
 	uv_remaps_vbo_id := rg.LoadVertexBuffer(raw_data(instance_uv_remaps), i32(len(atlas_rects)*size_of([4]f32)), false)
-	rg.EnableVertexAttribute(SHADER_ATTRIB_LOCATION_INSTANCE_UV_REMAP)
-	rg.SetVertexAttribute(SHADER_ATTRIB_LOCATION_INSTANCE_UV_REMAP, 4, rg.FLOAT, false, size_of([4]f32), nil)
-	rg.SetVertexAttributeDivisor(SHADER_ATTRIB_LOCATION_INSTANCE_UV_REMAP, 1)
+	uv_remap_loc := u32(Shader_Attribute_Location.Instance_UV_Remap)
+	rg.EnableVertexAttribute(uv_remap_loc)
+	rg.SetVertexAttribute(uv_remap_loc, 4, rg.FLOAT, false, size_of([4]f32), nil)
+	rg.SetVertexAttributeDivisor(uv_remap_loc, 1)
 
 	rg.DisableVertexBuffer()
 	rg.DisableVertexArray()
@@ -682,14 +724,19 @@ draw_mesh_instanced :: proc(mesh: rl.Mesh, shader: Shader, params: Shader_Parame
 	rg.UnloadVertexBuffer(uv_remaps_vbo_id)
 }
 
-SHADER_ATTRIB_LOCATION_VERTEX_POSITION    :: 0
-SHADER_ATTRIB_LOCATION_VERTEX_TEXCOORD    :: 1
-SHADER_ATTRIB_LOCATION_VERTEX_NORMAL      :: 2
-SHADER_ATTRIB_LOCATION_VERTEX_COLOR       :: 3
-SHADER_ATTRIB_LOCATION_VERTEX_TANGENT     :: 4
-SHADER_ATTRIB_LOCATION_VERTEX_TEXCOORD2   :: 5
-SHADER_ATTRIB_LOCATION_INSTANCE_TRANSFORM :: 6
-SHADER_ATTRIB_LOCATION_INSTANCE_UV_REMAP  :: 10
+Shader_Attribute_Location :: enum {
+	Position,
+	Texcoord,
+	Normal,
+	Color,
+	Tangent,
+	Texcoord2,
+	Instance_Transform_0,
+	Instance_Transform_1,
+	Instance_Transform_2,
+	Instance_Transform_3,
+	Instance_UV_Remap,
+}
 
 Uniform_Name :: enum {
 	Transform_Model,
@@ -697,6 +744,22 @@ Uniform_Name :: enum {
 	Transform_View_Projection,
 	Transform_View,
 	Transform_Normal,
+	Light_0_Type,
+	Light_0_Direction,
+	Light_0_Position,
+	Light_0_Color,
+	Light_1_Type,
+	Light_1_Direction,
+	Light_1_Position,
+	Light_1_Color,
+	Light_2_Type,
+	Light_2_Direction,
+	Light_2_Position,
+	Light_2_Color,
+	Light_3_Type,
+	Light_3_Direction,
+	Light_3_Position,
+	Light_3_Color,
 	Color_Diffuse,
 	Position_Camera,
 	Light_View_Projection,
@@ -721,6 +784,7 @@ Light_Type :: enum {
 
 Shader_Light :: struct {
 	type: Light_Type,
+	direction: Vec3,
 	position: Vec3,
 	color: rl.Color,
 }
@@ -733,7 +797,6 @@ Shader_Parameters :: struct {
 	transf_light_vp: rl.Matrix,
 	lights: [4]Shader_Light,
 }
-
 
 UNIFORM_LOCATION_NONE :: -1
 
@@ -760,6 +823,22 @@ load_shader :: proc(vs_name: string, fs_name: string) -> Shader {
 		.Color_Diffuse = rg.GetLocationUniform(s.id, "color_diffuse"),
 		.Position_Camera = rg.GetLocationUniform(s.id, "position_camera"),
 		.Light_View_Projection = rg.GetLocationUniform(s.id, "transf_light_vp"),
+		.Light_0_Type = rg.GetLocationUniform(s.id, "lights[0].type"),
+		.Light_0_Direction = rg.GetLocationUniform(s.id, "lights[0].direction"),
+		.Light_0_Position = rg.GetLocationUniform(s.id, "lights[0].position"),
+		.Light_0_Color = rg.GetLocationUniform(s.id, "lights[0].color"),
+		.Light_1_Type = rg.GetLocationUniform(s.id, "lights[1].type"),
+		.Light_1_Direction = rg.GetLocationUniform(s.id, "lights[1].direction"),
+		.Light_1_Position = rg.GetLocationUniform(s.id, "lights[1].position"),
+		.Light_1_Color = rg.GetLocationUniform(s.id, "lights[1].color"),
+		.Light_2_Type = rg.GetLocationUniform(s.id, "lights[2].type"),
+		.Light_2_Direction = rg.GetLocationUniform(s.id, "lights[2].direction"),
+		.Light_2_Position = rg.GetLocationUniform(s.id, "lights[2].position"),
+		.Light_2_Color = rg.GetLocationUniform(s.id, "lights[2].color"),
+		.Light_3_Type = rg.GetLocationUniform(s.id, "lights[3].type"),
+		.Light_3_Direction = rg.GetLocationUniform(s.id, "lights[3].direction"),
+		.Light_3_Position = rg.GetLocationUniform(s.id, "lights[3].position"),
+		.Light_3_Color = rg.GetLocationUniform(s.id, "lights[3].color"),
 	}
 
 	s.texture_locations = {
