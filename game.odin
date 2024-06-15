@@ -62,7 +62,7 @@ Game_Memory :: struct {
 	default_shader: rl.Shader,
 	default_shader_instanced: Shader,
 	shadowcasting_shader_instanced: Shader,
-	skybox_shader: rl.Shader,
+	skybox_shader: Shader,
 	boxes: [dynamic]Box,
 	mouse_captured: bool,
 	climb_points: [dynamic]Climb_Point,
@@ -270,8 +270,25 @@ update :: proc() -> Frame_State {
 	return fs
 }
 
+begin_shader_mode :: proc(s: ^Shader) {
+	rg.SetShader(s.id, raw_data(s.rl_locs[:]))
+
+	mat_view := rg.GetMatrixModelview()
+	mat_projection := rg.GetMatrixProjection()
+
+	mat_view_projection := mat_projection * mat_view * rg.GetMatrixTransform()
+
+	if loc := s.uniform_locations[.Transform_Model_View_Projection]; loc != UNIFORM_LOCATION_NONE {
+		rg.SetUniformMatrix(loc, mat_view_projection)
+	}
+}
+
+end_shader_mode :: proc() {
+	rg.SetShader(rg.GetShaderIdDefault(), rg.GetShaderLocsDefault())
+}
+
 draw_skybox :: proc() {
-	rl.BeginShaderMode(g_mem.skybox_shader)
+	begin_shader_mode(&g_mem.skybox_shader)
 	s :: 1000
 	c := rl.RED
 
@@ -340,7 +357,7 @@ draw_skybox :: proc() {
 
 	rg.PopMatrix()
 
-	rl.EndShaderMode()
+	end_shader_mode()
 }
 
 draw_world :: proc(shader: Shader, shader_params: Shader_Parameters, disable_backface_culling: bool) {
@@ -774,6 +791,7 @@ Shader :: struct {
 	id: c.uint,
 	uniform_locations: [Uniform_Name]c.int,
 	texture_locations: [Texture_Name]c.int,
+	rl_locs: [32]c.int,
 }
 
 Light_Type :: enum {
@@ -846,6 +864,39 @@ load_shader :: proc(vs_name: string, fs_name: string) -> Shader {
 		.Shadow_Map = rg.GetLocationUniform(s.id, "tex_shadow_map"),
 	}
 
+	rl_locs := [rg.ShaderLocationIndex]c.int {
+		.VERTEX_POSITION = 0,
+		.VERTEX_TEXCOORD01 = 1,
+		.VERTEX_TEXCOORD02 = 6,
+		.VERTEX_NORMAL = 2,
+		.VERTEX_TANGENT = 5,
+		.VERTEX_COLOR = 3,
+		.MATRIX_MVP = s.uniform_locations[.Transform_Model_View_Projection],
+		.MATRIX_VIEW = s.uniform_locations[.Transform_View],
+		.MATRIX_PROJECTION = -1,
+		.MATRIX_MODEL = s.uniform_locations[.Transform_Model],
+		.MATRIX_NORMAL = s.uniform_locations[.Transform_Normal],
+		.VECTOR_VIEW = s.uniform_locations[.Position_Camera],
+		.COLOR_DIFFUSE = s.uniform_locations[.Color_Diffuse],
+		.COLOR_SPECULAR = -1,
+		.COLOR_AMBIENT = -1,
+		.MAP_ALBEDO = s.texture_locations[.Atlas],
+		.MAP_METALNESS = -1,
+		.MAP_NORMAL = -1,
+		.MAP_ROUGHNESS = -1,
+		.MAP_OCCLUSION = -1,
+		.MAP_EMISSION = -1,
+		.MAP_HEIGHT = -1,
+		.MAP_CUBEMAP = -1,
+		.MAP_IRRADIANCE = -1,
+		.MAP_PREFILTER = -1,
+		.MAP_BRDF = -1,
+	}
+
+	for l, i in rl_locs {
+		s.rl_locs[i] = l
+	}
+
 	return s
 }
 
@@ -859,7 +910,7 @@ game_init :: proc() {
 		},
 		shadowcasting_shader_instanced = load_shader("shadowcaster_instanced.vs", "shadowcaster.fs"),
 		default_shader_instanced = load_shader("default_lighting_instanced.vs", "default_lighting.fs"),
-		skybox_shader = rl.LoadShader("skybox.vs", "skybox.fs"),
+		skybox_shader = load_shader("skybox.vs", "skybox.fs"),
 		atlas = rl.LoadTexture("atlas.png"),
 		plane_mesh = rl.GenMeshPlane(1, 1, 2, 2),
 		box_mesh = rl.GenMeshCube(1, 1, 1),
