@@ -79,6 +79,8 @@ Game_Memory :: struct {
 	shadowcasting_mat_instanced: rl.Material,
 
 	debug_draw: bool,
+
+	cat_pos: Vec3,
 }
 
 g_mem: ^Game_Memory
@@ -108,6 +110,14 @@ Frame_State :: struct {
 }
 
 update :: proc() -> Frame_State {
+	cat_diff := Vec3{g_mem.player.pos.x, 0.5, g_mem.player.pos.z} - g_mem.cat_pos
+
+	if linalg.length(cat_diff) > 2 {
+		dir := linalg.normalize0(cat_diff)
+
+		g_mem.cat_pos += dir * dt * 2
+	}
+
 	fs := Frame_State {
 		crosshair_color = rl.GRAY,
 	}
@@ -398,7 +408,7 @@ draw_world :: proc(shader: Shader, shader_params: Shader_Parameters, disable_bac
 
 		append(&npc_transforms, get_npc_transform({0, 0.43, -5}))
 		append(&npc_rects, atlas_textures[.Squirrel].rect)
-		append(&npc_transforms, get_npc_transform({2, 0.5, -5}))
+		append(&npc_transforms, get_npc_transform(g_mem.cat_pos))
 		append(&npc_rects, atlas_textures[.Cat].rect)
 
 		draw_mesh_instanced(g_mem.plane_mesh, shader, shader_params, npc_transforms[:], npc_rects[:])
@@ -916,6 +926,8 @@ game_init :: proc() {
 		box_mesh = rl.GenMeshCube(1, 1, 1),
 		shadow_map = create_shadowmap_rt(4096, 4096),
 	}
+
+	g_mem.cat_pos = {g_mem.player.pos.x, 0.5, g_mem.player.pos.z - 2}
 
 	append(&g_mem.climb_points, Climb_Point {
 		pos = {0,  0.2, -10},
