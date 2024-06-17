@@ -482,6 +482,27 @@ draw :: proc(fs: Frame_State) {
 		rl.DrawTextureEx(g_mem.shadow_map.depth, {}, 0, 0.1, rl.WHITE)
 	}
 
+	{
+		arm_rect := atlas_textures[.Arm].rect
+		dst := Rect {
+			400, 1300,
+			arm_rect.width*30, arm_rect.height*30,
+		}
+		rl.DrawTexturePro(g_mem.atlas, arm_rect, dst, {dst.width/2, dst.height}, 30, rl.WHITE)
+	}
+	
+
+
+
+	{
+		arm_rect := atlas_textures[.Arm].rect
+		dst := Rect {
+			f32(rl.GetScreenWidth())- 400, 1300,
+			arm_rect.width*30, arm_rect.height*30,
+		}
+		rl.DrawTexturePro(g_mem.atlas, arm_rect, dst, {dst.width/2, dst.height}, -30, rl.WHITE)
+	}
+
 	rl.EndDrawing()
 }
 
