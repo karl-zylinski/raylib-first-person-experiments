@@ -18,24 +18,33 @@ Box :: struct {
 
 Climb_Point :: struct {
 	pos: Vec3,
+	end_pos: Vec3,
 	wanted_facing: Vec3,
 }
 
 Player_State_Default :: struct {}
 
+Climb_Params :: struct {
+	point_start: Vec3,
+	point_end: Vec3,
+	wanted_facing: Vec3,
+	end_offset: Vec3,
+	skip_end_turn: bool,
+}
+
 Player_State_Climb_Start :: struct {
-	point: Climb_Point,
-	start: Vec3,
+	params: Climb_Params,
+	player_start: Vec3,
 	start_pitch: f32,
 	start_yaw: f32,
 }
 
 Player_State_Climb_Down :: struct {
-	start: Vec3,
-	end: Vec3,
+	params: Climb_Params,
 }
 
 Player_State_Climb_End :: struct {
+	params: Climb_Params,
 	start_yaw: f32,
 }
 
@@ -54,6 +63,9 @@ Player :: struct {
 
 	yaw: f32,
 	pitch: f32,
+
+	left_arm_focus: Vec2,
+	right_arm_focus: Vec2,
 }
 
 Game_Memory :: struct {
@@ -70,6 +82,7 @@ Game_Memory :: struct {
 	atlas: rl.Texture2D,
 	plane_mesh: rl.Mesh,
 	box_mesh: rl.Mesh,
+	cylinder_mesh: rl.Mesh,
 
 	shadow_map: rl.RenderTexture2D,
 
@@ -110,13 +123,13 @@ Frame_State :: struct {
 }
 
 update :: proc() -> Frame_State {
-	cat_diff := Vec3{g_mem.player.pos.x, 0.5, g_mem.player.pos.z} - g_mem.cat_pos
+	/*cat_diff := Vec3{g_mem.player.pos.x, 0.5, g_mem.player.pos.z} - g_mem.cat_pos
 
 	if linalg.length(cat_diff) > 2 {
 		dir := linalg.normalize0(cat_diff)
 
 		g_mem.cat_pos += dir * dt * 2
-	}
+	}*/
 
 	fs := Frame_State {
 		crosshair_color = rl.GRAY,
@@ -129,6 +142,11 @@ update :: proc() -> Frame_State {
 	g_mem.time += f64(dt)
 
 	p := &g_mem.player
+
+	hands_camera := get_hands_camera()
+
+	enable_gravity := true
+
 	switch &s in p.state {
 		case Player_State_Default:
 			if rl.IsWindowFocused() {
@@ -163,47 +181,81 @@ update :: proc() -> Frame_State {
 				p.yaw -= rl.GetMouseDelta().x * dt * 0.2
 				p.pitch -= rl.GetMouseDelta().y * dt * 0.2
 				p.pitch = clamp(p.pitch, -0.24, 0.24)
+
+				if p.yaw > 1 {
+					p.yaw -= math.floor(p.yaw)
+				}
+
+				if p.yaw < 0 {
+					p.yaw += abs(math.floor(p.yaw))
+				}
+
 				r := linalg.matrix4_rotate(p.yaw * math.TAU, Vec3{0, 1, 0})
 				p.vel.xz = linalg.mul(r, vec4_point(movement)).xz * 3
+
+				p.left_arm_focus = rl.GetScreenToWorld2D(rl.GetMousePosition(), hands_camera)
+				p.right_arm_focus = rl.GetScreenToWorld2D(rl.GetMousePosition(), hands_camera)
 			}
 
 		case Player_State_Climb_Start:
-			end_yaw := math.asin(s.point.wanted_facing.y)/math.TAU + 0.5
+			enable_gravity = false
+			end_yaw := math.asin(s.params.wanted_facing.y)/math.TAU + 0.5
 			t := f32(remap(g_mem.time, p.state_start, p.state_start + 1, 0, 1))
 			p.yaw = math.lerp(s.start_yaw, end_yaw, t)
 			p.pitch = math.lerp(s.start_pitch, 0, t)
 
-			end_pos := s.start - s.point.wanted_facing
+			turn_around_done_pos := s.params.point_start - s.params.wanted_facing*0.5
 
-			p.pos = math.lerp(s.start, end_pos, t)
+			p.pos = math.lerp(s.player_start, turn_around_done_pos, t)
 
 			if t >= 1 {
 				player_set_state(Player_State_Climb_Down {
-					start = p.pos,
-					end = p.pos - {0, 4, 0},
+					params = s.params,
 				})
 			}
 
 		case Player_State_Climb_Down:
+			enable_gravity = false
 			t := f32(remap(g_mem.time, p.state_start, p.state_start + 3, 0, 1))
-			p.pos = math.lerp(s.start, s.end, t)
+
+			start := s.params.point_start - s.params.wanted_facing * 0.5
+			end := s.params.point_end - s.params.wanted_facing * 0.5
+
+			p.pos = math.lerp(start, end, t)
+
+			cr := rect_middle(camera_rect(get_hands_camera()))
+
+			p.left_arm_focus = cr + Vec2{f32(math.sin(g_mem.time*13)) * 6, f32(math.cos(g_mem.time*13)) * 6}
+			p.right_arm_focus = cr + Vec2{f32(math.sin(g_mem.time*13 + 123)) * 6, f32(math.cos(g_mem.time*13 - 1230)) * 6}
 
 			if t >= 1 {
 				player_set_state(Player_State_Climb_End {
 					start_yaw = p.yaw,
+					params = s.params,
 				})
 			}
 
 		case Player_State_Climb_End:
+			enable_gravity = false
 			t := f32(remap(g_mem.time, p.state_start, p.state_start + 1, 0, 1))
-			p.yaw = math.lerp(s.start_yaw, s.start_yaw + 0.5, t)
+
+			if !s.params.skip_end_turn {
+				p.yaw = math.lerp(s.start_yaw, s.start_yaw + 0.5, t)
+			}
+
+			start := s.params.point_end - s.params.wanted_facing * 0.5
+			end := s.params.point_end - s.params.wanted_facing * 0.5 + s.params.end_offset
+
+			p.pos = math.lerp(start, end, t)
 
 			if t >= 1 {
 				p.state = Player_State_Default {}
 			}
 	}
 	
-	p.vel.y -= dt * 9.82
+	if enable_gravity {
+		p.vel.y -= dt * 9.82
+	}
 	p.pos.y += p.vel.y * dt
 	grounded := false
 
@@ -267,8 +319,32 @@ update :: proc() -> Frame_State {
 
 			if rl.IsKeyPressed(.E) && union_type(g_mem.player.state) == Player_State_Default {
 				player_set_state(Player_State_Climb_Start {
-					point = c,
-					start = g_mem.player.pos,
+					params = {
+						point_start = c.pos,
+						point_end = c.end_pos,
+						wanted_facing = c.wanted_facing,
+					},
+					player_start = g_mem.player.pos,
+					start_pitch = g_mem.player.pitch,
+					start_yaw = g_mem.player.yaw,
+				})
+				break
+			}
+		}
+
+		if coll := rl.GetRayCollisionSphere(mouse_ray, c.end_pos, 0.1); coll.hit && coll.distance < 1.5 {
+			fs.crosshair_color = rl.GREEN
+
+			if rl.IsKeyPressed(.E) && union_type(g_mem.player.state) == Player_State_Default {
+				player_set_state(Player_State_Climb_Start {
+					params = {
+						point_start = c.end_pos,
+						point_end = c.pos,
+						wanted_facing = c.wanted_facing,
+						end_offset = c.wanted_facing + {0, 0.5, 0},
+						skip_end_turn = true,
+					},
+					player_start = g_mem.player.pos,
 					start_pitch = g_mem.player.pitch,
 					start_yaw = g_mem.player.yaw,
 				})
@@ -371,6 +447,8 @@ draw_skybox :: proc() {
 }
 
 draw_world :: proc(shader: Shader, shader_params: Shader_Parameters, disable_backface_culling: bool) {
+	shader_params := shader_params
+
 	// boxes
 	{
 		box_transforms := make([dynamic]rl.Matrix, context.temp_allocator)
@@ -414,8 +492,33 @@ draw_world :: proc(shader: Shader, shader_params: Shader_Parameters, disable_bac
 		draw_mesh_instanced(g_mem.plane_mesh, shader, shader_params, npc_transforms[:], npc_rects[:])
 	}
 
+	for c in g_mem.climb_points {
+		l := abs(c.end_pos.y - c.pos.y)
+		transforms := []rl.Matrix {
+			auto_cast(linalg.matrix4_translate(c.pos + {0, -l, 0}) * linalg.matrix4_scale(Vec3{0.1, l, 0.1})),
+		}
+
+		rects: [1]Rect
+
+		shader_params.albedo = rl.BROWN
+		draw_mesh_instanced(g_mem.cylinder_mesh, shader, shader_params, transforms[:], rects[:])
+	}
+
 	if disable_backface_culling {
 		rg.EnableBackfaceCulling()
+	}
+}
+
+camera_rect :: proc(camera: rl.Camera2D) -> Rect {
+	pos := rl.GetScreenToWorld2D({}, camera)
+	size := screen_size() / camera.zoom
+	return rect_from_pos_size(pos, size)
+}
+
+screen_size :: proc() -> Vec2 {
+	return {
+		f32(rl.GetScreenWidth()),
+		f32(rl.GetScreenHeight()),
 	}
 }
 
@@ -469,9 +572,10 @@ draw :: proc(fs: Frame_State) {
 
 	draw_world(g_mem.default_shader_instanced, shader_params, false)
 
-	for c in g_mem.climb_points {
+	/*for c in g_mem.climb_points {
 		rl.DrawSphere(c.pos, 0.1, rl.RED)
-	}
+		rl.DrawSphere(c.end_pos, 0.1, rl.RED)
+	}*/
 		
 	rl.EndMode3D()
 
@@ -482,28 +586,57 @@ draw :: proc(fs: Frame_State) {
 		rl.DrawTextureEx(g_mem.shadow_map.depth, {}, 0, 0.1, rl.WHITE)
 	}
 
-	{
-		arm_rect := atlas_textures[.Arm].rect
-		dst := Rect {
-			400, 1300,
-			arm_rect.width*30, arm_rect.height*30,
-		}
-		rl.DrawTexturePro(g_mem.atlas, arm_rect, dst, {dst.width/2, dst.height}, 30, rl.WHITE)
-	}
-	
+	WORLD_UP :: Vec3 {0, 1, 0}
 
+	hands_camera := get_hands_camera()
 
+	rl.BeginMode2D(hands_camera)
 
 	{
 		arm_rect := atlas_textures[.Arm].rect
-		dst := Rect {
-			f32(rl.GetScreenWidth())- 400, 1300,
-			arm_rect.width*30, arm_rect.height*30,
+		cr := camera_rect(hands_camera)
+
+		arm_root := Vec2 { cr.width*(3.0/4), cr.height+4 }
+		rot := linalg.angle_between(Vec2 {0, 1}, g_mem.player.right_arm_focus - arm_root) * linalg.DEG_PER_RAD - 180
+
+		if g_mem.player.right_arm_focus.x > arm_root.x {
+			rot *= -1
 		}
-		rl.DrawTexturePro(g_mem.atlas, arm_rect, dst, {dst.width/2, dst.height}, -30, rl.WHITE)
+
+		dst := Rect {
+			arm_root.x, arm_root.y,
+			arm_rect.width, arm_rect.height,
+		}
+		rl.DrawTexturePro(g_mem.atlas, arm_rect, dst, {dst.width/2, dst.height}, rot, rl.WHITE)
 	}
+
+	{
+		arm_rect := atlas_textures[.Arm].rect
+		cr := camera_rect(hands_camera)
+
+		arm_root := Vec2 { cr.width*(1.0/4), cr.height+4 }
+		rot := linalg.angle_between(Vec2 {0, 1}, g_mem.player.left_arm_focus - arm_root) * linalg.DEG_PER_RAD - 180
+
+		if g_mem.player.left_arm_focus.x > arm_root.x {
+			rot *= -1
+		}
+
+		dst := Rect {
+			arm_root.x, arm_root.y,
+			arm_rect.width, arm_rect.height,
+		}
+		rl.DrawTexturePro(g_mem.atlas, arm_rect, dst, {dst.width/2, dst.height}, rot, rl.WHITE)
+	}
+
+	rl.EndMode2D()
 
 	rl.EndDrawing()
+}
+
+get_hands_camera :: proc() -> rl.Camera2D {
+	return {
+		zoom = f32(rl.GetScreenHeight())/45,
+	}
 }
 
 @(export)
@@ -898,9 +1031,9 @@ load_shader :: proc(vs_name: string, fs_name: string) -> Shader {
 	rl_locs := [rg.ShaderLocationIndex]c.int {
 		.VERTEX_POSITION = 0,
 		.VERTEX_TEXCOORD01 = 1,
-		.VERTEX_TEXCOORD02 = 6,
+		.VERTEX_TEXCOORD02 = 5,
 		.VERTEX_NORMAL = 2,
-		.VERTEX_TANGENT = 5,
+		.VERTEX_TANGENT = 4,
 		.VERTEX_COLOR = 3,
 		.MATRIX_MVP = s.uniform_locations[.Transform_Model_View_Projection],
 		.MATRIX_VIEW = s.uniform_locations[.Transform_View],
@@ -945,6 +1078,7 @@ game_init :: proc() {
 		atlas = rl.LoadTexture("atlas.png"),
 		plane_mesh = rl.GenMeshPlane(1, 1, 2, 2),
 		box_mesh = rl.GenMeshCube(1, 1, 1),
+		cylinder_mesh = rl.GenMeshCylinder(0.5, 1, 8),
 		shadow_map = create_shadowmap_rt(4096, 4096),
 	}
 
@@ -952,6 +1086,7 @@ game_init :: proc() {
 
 	append(&g_mem.climb_points, Climb_Point {
 		pos = {0,  0.2, -10},
+		end_pos = {0, 0.2-4, -10},
 		wanted_facing = {0, 0, 1},
 	})
 

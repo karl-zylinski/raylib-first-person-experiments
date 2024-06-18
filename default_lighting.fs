@@ -23,6 +23,7 @@ uniform sampler2D tex_shadow_map;
 uniform vec3 position_camera;
 uniform Light lights[MAX_LIGHTS];
 uniform sampler2D tex_atlas;
+uniform vec4 color_diffuse;
 
 const vec3 COLOR_SHADOW = vec3(0.329, 0.349, 0.631);
 const vec3 COLOR_LIGHT = vec3(0.922, 0.686, 0.329);
@@ -108,7 +109,7 @@ void main() {
     }
 
     light_color = mix(light_color, COLOR_SHADOW, float(shadow_counter) / float(NUM_SHADOW_SAMPLES));
-	out_color = tex_color*vec4(light_color, 1) - vec4(0, distance_darkening, distance_darkening, 0);
+	out_color = color_diffuse*tex_color*vec4(light_color, 1) - vec4(0, distance_darkening, distance_darkening, 0);
 
 	// Gamma correction
 	out_color = pow(out_color, vec4(1.0/2.2));
