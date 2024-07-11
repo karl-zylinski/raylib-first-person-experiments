@@ -94,6 +94,9 @@ Game_Memory :: struct {
 	debug_draw: bool,
 
 	cat_pos: Vec3,
+
+	editing: bool,
+	editor_state: Editor_State,
 }
 
 g_mem: ^Game_Memory
@@ -120,6 +123,7 @@ player_set_state :: proc(state: Player_State) {
 
 Frame_State :: struct {
 	crosshair_color: rl.Color,
+	camera: rl.Camera3D,
 }
 
 update :: proc() -> Frame_State {
@@ -137,9 +141,6 @@ update :: proc() -> Frame_State {
 
 	// Rotate light
 	// light_pos = {20*f32(math.cos(rl.GetTime())), 20, -20*f32(math.sin(rl.GetTime()))}
-
-	dt = min(rl.GetFrameTime(), 0.033)
-	g_mem.time += f64(dt)
 
 	p := &g_mem.player
 
@@ -353,6 +354,8 @@ update :: proc() -> Frame_State {
 		}
 	}
 
+	fs.camera = game_camera()
+
 	return fs
 }
 
@@ -446,7 +449,7 @@ draw_skybox :: proc() {
 	end_shader_mode()
 }
 
-draw_world :: proc(shader: Shader, shader_params: Shader_Parameters, disable_backface_culling: bool) {
+draw_world_pass :: proc(shader: Shader, shader_params: Shader_Parameters, disable_backface_culling: bool) {
 	shader_params := shader_params
 
 	// boxes
@@ -479,7 +482,8 @@ draw_world :: proc(shader: Shader, shader_params: Shader_Parameters, disable_bac
 			
 			cam_dir := linalg.normalize0(Vec3{pos.x, 0, pos.z} - xz_cam_position)
 			forward := Vec3{0, 0, -1}
-			yr := math.acos(linalg.dot(cam_dir, forward)) * math.sign(linalg.dot(cam_dir, Vec3{-1, 0, 0}))
+			sign := math.sign(linalg.dot(cam_dir, Vec3{-1, 0, 0}))
+			yr := math.acos(linalg.dot(cam_dir, forward)) * (sign != 0 ? sign : 1)
 
 			return auto_cast(linalg.matrix4_translate(pos) * linalg.matrix4_rotate(yr, Vec3{0, 1, 0}) * linalg.matrix4_rotate(math.TAU/4, Vec3{1, 0, 0}) * linalg.matrix4_scale(Vec3{1, 0.01, 1}))
 		}
@@ -522,7 +526,7 @@ screen_size :: proc() -> Vec2 {
 	}
 }
 
-draw :: proc(fs: Frame_State) {
+draw_world :: proc(camera: rl.Camera3D) {
 	shader_params := Shader_Parameters {
 		albedo = rl.WHITE,
 		atlas = g_mem.atlas,
@@ -535,8 +539,6 @@ draw :: proc(fs: Frame_State) {
 			},
 		},
 	}
-
-	rl.BeginDrawing()
 
 	// Draw into shadowmap
 
@@ -554,7 +556,7 @@ draw :: proc(fs: Frame_State) {
 	rl.BeginMode3D(light_cam)
 	light_view := rg.GetMatrixModelview()
 	light_proj := rg.GetMatrixProjection()
-	draw_world(g_mem.shadowcasting_shader_instanced, shader_params, true)
+	draw_world_pass(g_mem.shadowcasting_shader_instanced, shader_params, true)
 	rl.EndMode3D()
 	rl.EndTextureMode()
 
@@ -564,13 +566,11 @@ draw :: proc(fs: Frame_State) {
 
 	rl.ClearBackground(rl.BLACK)
 
-	cam := game_camera()
-
-	shader_params.view_pos = cam.position
-	rl.BeginMode3D(cam)
+	shader_params.view_pos = camera.position
+	rl.BeginMode3D(camera)
 	draw_skybox()
 
-	draw_world(g_mem.default_shader_instanced, shader_params, false)
+	draw_world_pass(g_mem.default_shader_instanced, shader_params, false)
 
 	/*for c in g_mem.climb_points {
 		rl.DrawSphere(c.pos, 0.1, rl.RED)
@@ -578,6 +578,11 @@ draw :: proc(fs: Frame_State) {
 	}*/
 		
 	rl.EndMode3D()
+}
+
+draw :: proc(fs: Frame_State) {
+	rl.BeginDrawing()
+	draw_world(fs.camera)
 
 	screen_mid := Vec2{f32(rl.GetScreenWidth()), f32(rl.GetScreenHeight())}*0.5
 	rl.DrawCircleV(screen_mid, 5, fs.crosshair_color)
@@ -585,8 +590,6 @@ draw :: proc(fs: Frame_State) {
 	if g_mem.debug_draw {
 		rl.DrawTextureEx(g_mem.shadow_map.depth, {}, 0, 0.1, rl.WHITE)
 	}
-
-	WORLD_UP :: Vec3 {0, 1, 0}
 
 	hands_camera := get_hands_camera()
 
@@ -645,8 +648,20 @@ game_update :: proc() -> bool {
 		g_mem.debug_draw = !g_mem.debug_draw
 	}
 
-	frame_state := update()
-	draw(frame_state)
+	if rl.IsKeyPressed(.F2) {
+		g_mem.editing = !g_mem.editing
+	}
+
+	dt = min(rl.GetFrameTime(), 0.033)
+	g_mem.time += f64(dt)
+
+	if g_mem.editing {
+		editor_update()
+	} else {
+		frame_state := update()
+		draw(frame_state)
+	}
+
 	return !rl.WindowShouldClose()
 }
 
@@ -658,16 +673,16 @@ game_init_window :: proc() {
 	rl.SetTargetFPS(500)
 }
 
-camera_rot_matrix :: proc() -> Mat4 {
-	camera_rot_x := linalg.matrix4_rotate(g_mem.player.pitch * math.TAU, Vec3{1, 0, 0})
-	camera_rot_y := linalg.matrix4_rotate(g_mem.player.yaw * math.TAU, Vec3{0, 1, 0})
+camera_rot_matrix :: proc(pitch: f32, yaw: f32) -> Mat4 {
+	camera_rot_x := linalg.matrix4_rotate(pitch * math.TAU, Vec3{1, 0, 0})
+	camera_rot_y := linalg.matrix4_rotate(yaw * math.TAU, Vec3{0, 1, 0})
 	return linalg.mul(camera_rot_y, camera_rot_x)
 }
 
 game_camera :: proc() -> rl.Camera {
 	return {
 		position = player_eye_pos(),
-		target = player_eye_pos() + linalg.mul(camera_rot_matrix(), Vec4{0, 0, -1, 1}).xyz,
+		target = player_eye_pos() + linalg.mul(camera_rot_matrix(g_mem.player.pitch, g_mem.player.yaw), Vec4{0, 0, -1, 1}).xyz,
 		up = {0, 1, 0},
 		fovy = 90,
 		projection = .PERSPECTIVE,
@@ -734,29 +749,29 @@ draw_mesh_instanced :: proc(mesh: rl.Mesh, shader: Shader, params: Shader_Parame
 		type_loc, direction_loc, position_loc, color_loc: c.int
 
 		switch i {
-			case 0:
-				type_loc = shader.uniform_locations[.Light_0_Type]
-				direction_loc = shader.uniform_locations[.Light_0_Direction]
-				position_loc = shader.uniform_locations[.Light_0_Position]
-				color_loc = shader.uniform_locations[.Light_0_Color]
+		case 0:
+			type_loc = shader.uniform_locations[.Light_0_Type]
+			direction_loc = shader.uniform_locations[.Light_0_Direction]
+			position_loc = shader.uniform_locations[.Light_0_Position]
+			color_loc = shader.uniform_locations[.Light_0_Color]
 
-			case 1:
-				type_loc = shader.uniform_locations[.Light_1_Type]
-				direction_loc = shader.uniform_locations[.Light_1_Direction]
-				position_loc = shader.uniform_locations[.Light_1_Position]
-				color_loc = shader.uniform_locations[.Light_1_Color]
+		case 1:
+			type_loc = shader.uniform_locations[.Light_1_Type]
+			direction_loc = shader.uniform_locations[.Light_1_Direction]
+			position_loc = shader.uniform_locations[.Light_1_Position]
+			color_loc = shader.uniform_locations[.Light_1_Color]
 
-			case 2:
-				type_loc = shader.uniform_locations[.Light_2_Type]
-				direction_loc = shader.uniform_locations[.Light_2_Direction]
-				position_loc = shader.uniform_locations[.Light_2_Position]
-				color_loc = shader.uniform_locations[.Light_2_Color]
+		case 2:
+			type_loc = shader.uniform_locations[.Light_2_Type]
+			direction_loc = shader.uniform_locations[.Light_2_Direction]
+			position_loc = shader.uniform_locations[.Light_2_Position]
+			color_loc = shader.uniform_locations[.Light_2_Color]
 
-			case 3:
-				type_loc = shader.uniform_locations[.Light_3_Type]
-				direction_loc = shader.uniform_locations[.Light_3_Direction]
-				position_loc = shader.uniform_locations[.Light_3_Position]
-				color_loc = shader.uniform_locations[.Light_3_Color]
+		case 3:
+			type_loc = shader.uniform_locations[.Light_3_Type]
+			direction_loc = shader.uniform_locations[.Light_3_Direction]
+			position_loc = shader.uniform_locations[.Light_3_Position]
+			color_loc = shader.uniform_locations[.Light_3_Color]
 		}
 
 		if type_loc == -1 || direction_loc == -1 || position_loc == -1 || color_loc == -1 {
@@ -768,13 +783,13 @@ draw_mesh_instanced :: proc(mesh: rl.Mesh, shader: Shader, params: Shader_Parame
 		rg.SetUniform(type_loc, &type, i32(rg.ShaderUniformDataType.INT), 1)
 
 		switch l.type {
-			case .None:
-			case .Directional:
-				dir := l.direction
-				rg.SetUniform(direction_loc, &dir, i32(rg.ShaderUniformDataType.VEC3), 1)
-			case .Point:
-				pos := l.position
-				rg.SetUniform(position_loc, &pos, i32(rg.ShaderUniformDataType.VEC3), 1)
+		case .None:
+		case .Directional:
+			dir := l.direction
+			rg.SetUniform(direction_loc, &dir, i32(rg.ShaderUniformDataType.VEC3), 1)
+		case .Point:
+			pos := l.position
+			rg.SetUniform(position_loc, &pos, i32(rg.ShaderUniformDataType.VEC3), 1)
 		}
 		
 		rg.SetUniform(color_loc, &color, i32(rg.ShaderUniformDataType.VEC4), 1)
@@ -1175,6 +1190,7 @@ game_memory_size :: proc() -> int {
 @(export)
 game_hot_reloaded :: proc(mem: rawptr) {
 	g_mem = (^Game_Memory)(mem)
+	editor_set_state(&g_mem.editor_state)
 }
 
 @(export)

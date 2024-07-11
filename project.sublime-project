@@ -18,7 +18,10 @@
 			"path": "C:\\Odin\\base",
 		},
 		{
-			"path": "C:\\Odin\\examples"
+			"path": "C:\\Odin\\examples",
+		},
+		{
+			"path": "C:\\Odin\\src"
 		},
 	],
 	"build_systems":
