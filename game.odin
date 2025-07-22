@@ -150,108 +150,108 @@ update :: proc() -> Frame_State {
 
 	switch &s in p.state {
 	case Player_State_Default:
-			if rl.IsWindowFocused() {
-				if rl.IsKeyPressed(.X) {
-					if g_mem.mouse_captured {
-						rl.EnableCursor()
-						g_mem.mouse_captured = false
-					} else {
-						rl.DisableCursor()
-						g_mem.mouse_captured = true
-					}
+		if rl.IsWindowFocused() {
+			if rl.IsKeyPressed(.X) {
+				if g_mem.mouse_captured {
+					rl.EnableCursor()
+					g_mem.mouse_captured = false
+				} else {
+					rl.DisableCursor()
+					g_mem.mouse_captured = true
 				}
-
-				movement: Vec3
-
-				if rl.IsKeyDown(.W) {
-					movement.z -= 1
-				}
-
-				if rl.IsKeyDown(.S) {
-					movement.z += 1
-				}
-
-				if rl.IsKeyDown(.A) {
-					movement.x -= 1
-				}
-
-				if rl.IsKeyDown(.D) {
-					movement.x += 1
-				}
-
-				p.yaw -= rl.GetMouseDelta().x * dt * 0.2
-				p.pitch -= rl.GetMouseDelta().y * dt * 0.2
-				p.pitch = clamp(p.pitch, -0.24, 0.24)
-
-				if p.yaw > 1 {
-					p.yaw -= math.floor(p.yaw)
-				}
-
-				if p.yaw < 0 {
-					p.yaw += abs(math.floor(p.yaw))
-				}
-
-				r := linalg.matrix4_rotate(p.yaw * math.TAU, Vec3{0, 1, 0})
-				p.vel.xz = linalg.mul(r, vec4_point(movement)).xz * 3
-
-				p.left_arm_focus = rl.GetScreenToWorld2D(rl.GetMousePosition(), hands_camera)
-				p.right_arm_focus = rl.GetScreenToWorld2D(rl.GetMousePosition(), hands_camera)
 			}
+
+			movement: Vec3
+
+			if rl.IsKeyDown(.W) {
+				movement.z -= 1
+			}
+
+			if rl.IsKeyDown(.S) {
+				movement.z += 1
+			}
+
+			if rl.IsKeyDown(.A) {
+				movement.x -= 1
+			}
+
+			if rl.IsKeyDown(.D) {
+				movement.x += 1
+			}
+
+			p.yaw -= rl.GetMouseDelta().x * dt * 0.2
+			p.pitch -= rl.GetMouseDelta().y * dt * 0.2
+			p.pitch = clamp(p.pitch, -0.24, 0.24)
+
+			if p.yaw > 1 {
+				p.yaw -= math.floor(p.yaw)
+			}
+
+			if p.yaw < 0 {
+				p.yaw += abs(math.floor(p.yaw))
+			}
+
+			r := linalg.matrix4_rotate(p.yaw * math.TAU, Vec3{0, 1, 0})
+			p.vel.xz = linalg.mul(r, vec4_point(movement)).xz * 3
+
+			p.left_arm_focus = rl.GetScreenToWorld2D(rl.GetMousePosition(), hands_camera)
+			p.right_arm_focus = rl.GetScreenToWorld2D(rl.GetMousePosition(), hands_camera)
+		}
 
 	case Player_State_Climb_Start:
-			enable_gravity = false
-			end_yaw := math.asin(s.params.wanted_facing.y)/math.TAU + 0.5
-			t := f32(remap(g_mem.time, p.state_start, p.state_start + 1, 0, 1))
-			p.yaw = math.lerp(s.start_yaw, end_yaw, t)
-			p.pitch = math.lerp(s.start_pitch, 0, t)
+		enable_gravity = false
+		end_yaw := math.asin(s.params.wanted_facing.y)/math.TAU + 0.5
+		t := f32(remap(g_mem.time, p.state_start, p.state_start + 1, 0, 1))
+		p.yaw = math.lerp(s.start_yaw, end_yaw, t)
+		p.pitch = math.lerp(s.start_pitch, 0, t)
 
-			turn_around_done_pos := s.params.point_start - s.params.wanted_facing*0.5
+		turn_around_done_pos := s.params.point_start - s.params.wanted_facing*0.5
 
-			p.pos = math.lerp(s.player_start, turn_around_done_pos, t)
+		p.pos = math.lerp(s.player_start, turn_around_done_pos, t)
 
-			if t >= 1 {
-				player_set_state(Player_State_Climb_Down {
-					params = s.params,
-				})
-			}
+		if t >= 1 {
+			player_set_state(Player_State_Climb_Down {
+				params = s.params,
+			})
+		}
 
 	case Player_State_Climb_Down:
-			enable_gravity = false
-			t := f32(remap(g_mem.time, p.state_start, p.state_start + 3, 0, 1))
+		enable_gravity = false
+		t := f32(remap(g_mem.time, p.state_start, p.state_start + 3, 0, 1))
 
-			start := s.params.point_start - s.params.wanted_facing * 0.5
-			end := s.params.point_end - s.params.wanted_facing * 0.5
+		start := s.params.point_start - s.params.wanted_facing * 0.5
+		end := s.params.point_end - s.params.wanted_facing * 0.5
 
-			p.pos = math.lerp(start, end, t)
+		p.pos = math.lerp(start, end, t)
 
-			cr := rect_middle(camera_rect(get_hands_camera()))
+		cr := rect_middle(camera_rect(get_hands_camera()))
 
-			p.left_arm_focus = cr + Vec2{f32(math.sin(g_mem.time*13)) * 6, f32(math.cos(g_mem.time*13)) * 6}
-			p.right_arm_focus = cr + Vec2{f32(math.sin(g_mem.time*13 + 123)) * 6, f32(math.cos(g_mem.time*13 - 1230)) * 6}
+		p.left_arm_focus = cr + Vec2{f32(math.sin(g_mem.time*13)) * 6, f32(math.cos(g_mem.time*13)) * 6}
+		p.right_arm_focus = cr + Vec2{f32(math.sin(g_mem.time*13 + 123)) * 6, f32(math.cos(g_mem.time*13 - 1230)) * 6}
 
-			if t >= 1 {
-				player_set_state(Player_State_Climb_End {
-					start_yaw = p.yaw,
-					params = s.params,
-				})
-			}
+		if t >= 1 {
+			player_set_state(Player_State_Climb_End {
+				start_yaw = p.yaw,
+				params = s.params,
+			})
+		}
 
 	case Player_State_Climb_End:
-			enable_gravity = false
-			t := f32(remap(g_mem.time, p.state_start, p.state_start + 1, 0, 1))
+		enable_gravity = false
+		t := f32(remap(g_mem.time, p.state_start, p.state_start + 1, 0, 1))
 
-			if !s.params.skip_end_turn {
-				p.yaw = math.lerp(s.start_yaw, s.start_yaw + 0.5, t)
-			}
+		if !s.params.skip_end_turn {
+			p.yaw = math.lerp(s.start_yaw, s.start_yaw + 0.5, t)
+		}
 
-			start := s.params.point_end - s.params.wanted_facing * 0.5
-			end := s.params.point_end - s.params.wanted_facing * 0.5 + s.params.end_offset
+		start := s.params.point_end - s.params.wanted_facing * 0.5
+		end := s.params.point_end - s.params.wanted_facing * 0.5 + s.params.end_offset
 
-			p.pos = math.lerp(start, end, t)
+		p.pos = math.lerp(start, end, t)
 
-			if t >= 1 {
-				p.state = Player_State_Default {}
-			}
+		if t >= 1 {
+			p.state = Player_State_Default {}
+		}
 	}
 	
 	if enable_gravity {
