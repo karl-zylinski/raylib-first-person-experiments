@@ -149,7 +149,7 @@ update :: proc() -> Frame_State {
 	enable_gravity := true
 
 	switch &s in p.state {
-		case Player_State_Default:
+	case Player_State_Default:
 			if rl.IsWindowFocused() {
 				if rl.IsKeyPressed(.X) {
 					if g_mem.mouse_captured {
@@ -198,7 +198,7 @@ update :: proc() -> Frame_State {
 				p.right_arm_focus = rl.GetScreenToWorld2D(rl.GetMousePosition(), hands_camera)
 			}
 
-		case Player_State_Climb_Start:
+	case Player_State_Climb_Start:
 			enable_gravity = false
 			end_yaw := math.asin(s.params.wanted_facing.y)/math.TAU + 0.5
 			t := f32(remap(g_mem.time, p.state_start, p.state_start + 1, 0, 1))
@@ -215,7 +215,7 @@ update :: proc() -> Frame_State {
 				})
 			}
 
-		case Player_State_Climb_Down:
+	case Player_State_Climb_Down:
 			enable_gravity = false
 			t := f32(remap(g_mem.time, p.state_start, p.state_start + 3, 0, 1))
 
@@ -236,7 +236,7 @@ update :: proc() -> Frame_State {
 				})
 			}
 
-		case Player_State_Climb_End:
+	case Player_State_Climb_End:
 			enable_gravity = false
 			t := f32(remap(g_mem.time, p.state_start, p.state_start + 1, 0, 1))
 
@@ -312,7 +312,7 @@ update :: proc() -> Frame_State {
 
 	screen_mid := Vec2{f32(rl.GetScreenWidth()), f32(rl.GetScreenHeight())}*0.5
 	cam := game_camera()
-	mouse_ray := rl.GetMouseRay(screen_mid, cam)
+	mouse_ray := rl.GetScreenToWorldRay(screen_mid, cam)
 
 	for c in g_mem.climb_points {
 		if coll := rl.GetRayCollisionSphere(mouse_ray, c.pos, 0.1); coll.hit && coll.distance < 1.5 {
@@ -845,7 +845,7 @@ draw_mesh_instanced :: proc(mesh: rl.Mesh, shader: Shader, params: Shader_Parame
 	for i in 0..<4 {
 		loc := u32(Shader_Attribute_Location.Instance_Transform_0) + u32(i)
 		rg.EnableVertexAttribute(loc)
-		offset := transmute(rawptr)(uintptr(i*size_of([4]f32)))
+		offset := i32(i*size_of([4]f32))
 		rg.SetVertexAttribute(loc, 4, rg.FLOAT, false, size_of(rl.Matrix), offset)
 		rg.SetVertexAttributeDivisor(loc, 1)
 	}
@@ -855,7 +855,7 @@ draw_mesh_instanced :: proc(mesh: rl.Mesh, shader: Shader, params: Shader_Parame
 	uv_remaps_vbo_id := rg.LoadVertexBuffer(raw_data(instance_uv_remaps), i32(len(atlas_rects)*size_of([4]f32)), false)
 	uv_remap_loc := u32(Shader_Attribute_Location.Instance_UV_Remap)
 	rg.EnableVertexAttribute(uv_remap_loc)
-	rg.SetVertexAttribute(uv_remap_loc, 4, rg.FLOAT, false, size_of([4]f32), nil)
+	rg.SetVertexAttribute(uv_remap_loc, 4, rg.FLOAT, false, size_of([4]f32), 0)
 	rg.SetVertexAttributeDivisor(uv_remap_loc, 1)
 
 	rg.DisableVertexBuffer()
@@ -1043,7 +1043,7 @@ load_shader :: proc(vs_name: string, fs_name: string) -> Shader {
 		.Shadow_Map = rg.GetLocationUniform(s.id, "tex_shadow_map"),
 	}
 
-	rl_locs := [rg.ShaderLocationIndex]c.int {
+	rl_locs := #partial [rg.ShaderLocationIndex]c.int {
 		.VERTEX_POSITION = 0,
 		.VERTEX_TEXCOORD01 = 1,
 		.VERTEX_TEXCOORD02 = 5,
@@ -1133,7 +1133,7 @@ create_shadowmap_rt :: proc(widthi, heighti: int) -> rl.RenderTexture2D {
 	height := i32(heighti)
 	target: rl.RenderTexture2D
 
-	target.id = rg.LoadFramebuffer(width, height) // Load an empty framebuffer
+	target.id = rg.LoadFramebuffer() // Load an empty framebuffer
 	target.texture.width = width
 	target.texture.height = height
 

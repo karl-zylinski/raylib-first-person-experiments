@@ -58,7 +58,7 @@ editor_update_free_camera :: proc() {
 
 editor_update_default :: proc() {
 	cam := editor_camera()
-	r := rl.GetMouseRay(rl.GetMousePosition(), cam)
+	r := rl.GetScreenToWorldRay(rl.GetMousePosition(), cam)
 
 	{
 		b := &g_mem.boxes[es.selected_object]
